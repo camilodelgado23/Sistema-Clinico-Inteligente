@@ -1,0 +1,48 @@
+TRATAMIENTO DE LA RETINOPATÍA DIABÉTICA — PROTOCOLOS 2024
+
+Principios generales:
+El tratamiento de la RD combina control sistémico de factores de riesgo con intervenciones
+oftalmológicas específicas según el estadio de la enfermedad.
+
+Control sistémico (base del tratamiento):
+- HbA1c <7%: Reduce riesgo de progresión RD en 76% (DCCT/EDIC)
+- Control presión arterial: <130/80 mmHg (reduce riesgo progresión 34%)
+- Control lipídico: Fenofibrato reduce necesidad laser en RDNP moderada-severa
+- Cese tabaquismo: Reduce vasoconstricción retinal
+
+Tratamiento según estadio:
+RDNP Leve:
+- Seguimiento anual con retinografía
+- Control metabólico intensificado
+- Sin intervención oftalmológica específica
+
+RDNP Moderada:
+- Seguimiento semestral
+- Considerar Anti-VEGF si hay EMD central
+- OCT macular para evaluar edema
+
+RDNP Severa (regla 4-2-1):
+- Referir urgente a retinólogo
+- Panfotocoagulación láser (PFC) preventiva
+- Anti-VEGF si hay EMD asociado
+- Seguimiento mensual hasta estabilización
+
+RD Proliferativa (RDP):
+- Tratamiento inmediato: Anti-VEGF sistémico + PFC
+- Si hemorragia vítrea: vitrectomía pars plana
+- Si desprendimiento retinal traccional: vitrectomía urgente
+- Anti-VEGF: ranibizumab 0.5mg, bevacizumab 1.25mg, aflibercept 2mg
+
+Edema Macular Diabético (EMD):
+Primera línea: Anti-VEGF intravítreo (inyecciones mensuales x6, luego PRN)
+- Ranibizumab (Lucentis): estudio RISE/RIDE — mejora ≥2 líneas en 40%
+- Aflibercept (Eylea): superioridad en BCVA <20/50 (estudio PROTOCOL T)
+- Bevacizumab (Avastin): similar eficacia, menor costo
+Segunda línea: Laser focal/en rejilla (si no responde a Anti-VEGF)
+Tercera línea: Implante dexametasona (Ozurdex) en pseudofáquicos
+
+Seguimiento post-tratamiento:
+- RDP tratada: c/1-3 meses primer año, c/6 meses después
+- EMD central: mensual durante fase activa, c/3 meses en mantenimiento
+
+Referencia: AAO PPP Diabetic Retinopathy 2023; RCOphth Diabetic Retinopathy Guidelines 2022.

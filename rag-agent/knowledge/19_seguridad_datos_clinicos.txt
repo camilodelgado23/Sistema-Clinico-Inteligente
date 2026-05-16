@@ -1,0 +1,55 @@
+SEGURIDAD DE DATOS CLÍNICOS Y CIBERSEGURIDAD EN SALUD DIGITAL
+
+Principios de seguridad en salud digital (HIPAA/ISO 27001/MSPS Colombia):
+- Confidencialidad: acceso solo a personal autorizado
+- Integridad: datos no alterados sin autorización
+- Disponibilidad: acceso cuando se necesite (SLA 99.9%)
+- No repudio: trazabilidad de acciones con auditoría
+
+Cifrado de datos en reposo:
+- AES-256 (Fernet): estándar para datos sensibles en base de datos
+- Campos a cifrar: número documento, resultados diagnósticos, tokens API
+- Contraseñas: bcrypt con factor de costo ≥12
+- Claves: almacenadas en variables de entorno (nunca en código fuente)
+
+Cifrado en tránsito:
+- TLS 1.3 (mínimo TLS 1.2)
+- Certificados: Let's Encrypt (gratuito) o CA comercial
+- HSTS: Strict-Transport-Security header
+- Cloudflare SSL Full Strict: certificado en servidor + Cloudflare como WAF
+
+Autenticación y autorización:
+- JWT (JSON Web Tokens): estándar para API REST clínicas
+- Algoritmo: HS256 (HMAC-SHA256) para monolito; RS256 para microservicios
+- Expiración: tokens de acceso 1-8h; refresh tokens 7-30 días
+- RBAC: roles (ADMIN, MEDICO, PACIENTE) con permisos granulares
+
+Anti-Prompt Injection (Agente RAG):
+- Detección por patrones regex: "ignore previous", "system:", "jailbreak", "DAN"
+- Sanitización de entrada antes de enviar al LLM
+- Rate limiting en endpoints del agente: 60 req/min por IP
+- Logging de intentos detectados para análisis forense
+
+Output Filtering:
+- Enmascaramiento PII en respuestas del agente:
+  - Cédula: últimos 4 dígitos visibles → ***1234
+  - Email: primeros 3 caracteres → ema***@***.***
+  - Teléfono: primeros 3 + últimos 3 → 312****567
+
+Cloudflare WAF:
+- Custom rules para bloquear payloads de prompt injection
+- Rate limiting a nivel red (antes de llegar al servidor)
+- Bot Fight Mode: protección contra scraping automatizado
+- DDoS protection: mitigación en capa 3, 4 y 7
+
+Auditoría:
+- AuditEvent FHIR: registro de accesos externos (SuperUser)
+- Tabla audit_log: INSERT-ONLY (nunca UPDATE/DELETE)
+- Información auditada: usuario, acción, recurso, IP, timestamp, resultado
+
+Vulnerabilidades comunes en salud digital:
+- SQL Injection: prevenido con consultas parametrizadas (asyncpg)
+- XSS: headers CSP + sanitización de output
+- CSRF: tokens CSRF en formularios
+- IDOR: validación de ownership en cada endpoint
+- Secrets en repos: uso de .env + .gitignore estricto

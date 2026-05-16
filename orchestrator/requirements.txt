@@ -1,0 +1,22 @@
+# Runtime
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+asyncpg==0.29.0
+onnxruntime==1.18.0
+numpy==1.26.4
+Pillow==10.3.0
+torch==2.3.0+cpu           # CPU-only build
+torchvision==0.18.0+cpu    # CPU-only build
+minio==7.2.7
+pydantic==2.7.1
+python-dotenv==1.0.1
+matplotlib==3.9.0          # for Grad-CAM colormap
+
+# Training only (install locally before building, not in Docker):
+# scikit-learn==1.4.2
+# tqdm==4.66.4
+# pandas==2.2.2
+# mlflow==2.12.2
+
+# CPU-only torch index
+--extra-index-url https://download.pytorch.org/whl/cpu

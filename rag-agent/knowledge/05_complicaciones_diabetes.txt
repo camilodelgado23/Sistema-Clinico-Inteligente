@@ -1,0 +1,44 @@
+COMPLICACIONES CRÓNICAS DE LA DIABETES MELLITUS
+
+Microangiopáticas:
+1. Retinopatía diabética (RD)
+   - Causa principal de ceguera en adultos en edad laboral
+   - Presente en 35% de diabéticos; proliferativa en 7%
+   - Correlación directa con control glucémico (HbA1c) y duración de DM
+
+2. Nefropatía diabética
+   - CKD estadio: TFGe <60 ml/min/1.73m2 y/o albuminuria ≥30 mg/g Cr
+   - Progresión a ESRD en ~30% sin tratamiento adecuado
+   - Biomarcadores: microalbuminuria, creatinina sérica, TFGe (LOINC 69405-9)
+
+3. Neuropatía diabética
+   - Polineuropatía sensitiva distal: "guante y calcetín"
+   - Neuropatía autonómica: cardiovascular, gastrointestinal, urogenital
+   - Pie diabético: úlceras de grado 0-5 (clasificación Wagner)
+
+Macroangiopáticas:
+1. Enfermedad cardiovascular (ECV)
+   - Principal causa de muerte en DM2
+   - RCV elevado: Framingham score, SCORE2-Diabetes
+   - Objetivo LDL: <70 mg/dL en DM con ECV; <100 mg/dL sin ECV
+
+2. Enfermedad cerebrovascular
+   - ACV isquémico: riesgo 2-4x vs población general
+
+3. Enfermedad arterial periférica (EAP)
+   - ITB <0.9 confirma EAP
+   - Precursor del pie diabético
+
+Screening anual obligatorio:
+- Fondo de ojo (retinografía o biomicroscopía)
+- Microalbuminuria + TFGe
+- Examen neurológico: monofilamento 10g + diapasón 128Hz
+- ITB si sospecha EAP
+- Perfil lipídico completo
+
+CIE-10 relevantes:
+- E11: Diabetes mellitus tipo 2
+- E11.3: DM2 con complicaciones oftálmicas
+- E11.4: DM2 con complicaciones neurológicas
+- E11.5: DM2 con complicaciones circulatorias periféricas
+- H36.0: Retinopatía diabética

@@ -1,0 +1,52 @@
+{
+  "feature_cols": [
+    "Pregnancies",
+    "Glucose",
+    "BloodPressure",
+    "SkinThickness",
+    "Insulin",
+    "BMI",
+    "DiabetesPedigreeFunction",
+    "Age"
+  ],
+  "loinc_map": {
+    "Glucose": "2339-0",
+    "BloodPressure": "55284-4",
+    "BMI": "39156-5",
+    "Insulin": "14749-6",
+    "Age": "21612-7",
+    "Pregnancies": "11996-6",
+    "SkinThickness": "39106-0",
+    "DiabetesPedigreeFunction": "33914-3"
+  },
+  "metrics": {
+    "f1": 0.7143,
+    "auc_roc": 0.8281,
+    "precision": 0.625,
+    "recall": 0.8333,
+    "threshold": 0.34,
+    "n_train": 460,
+    "n_val": 154,
+    "n_test": 154
+  },
+  "decision_threshold": 0.34,
+  "model_type": "xgboost",
+  "thresholds": {
+    "LOW": [
+      0.0,
+      0.3
+    ],
+    "MEDIUM": [
+      0.3,
+      0.6
+    ],
+    "HIGH": [
+      0.6,
+      0.85
+    ],
+    "CRITICAL": [
+      0.85,
+      1.0
+    ]
+  }
+}

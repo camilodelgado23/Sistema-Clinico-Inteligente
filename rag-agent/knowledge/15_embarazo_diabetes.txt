@@ -1,0 +1,43 @@
+DIABETES Y EMBARAZO — DIABETES GESTACIONAL Y PREGESTACIONAL
+
+Tipos:
+1. Diabetes Pregestacional (DPG): DM1 o DM2 diagnosticada antes del embarazo
+2. Diabetes Gestacional (DMG): intolerancia a los carbohidratos durante el embarazo
+
+Epidemiología:
+- DMG: 7-14% de todos los embarazos en Colombia
+- Riesgo materno: DMG aumenta 7x riesgo de DM2 a 10 años
+- Riesgo fetal: macrosomía, hipoglucemia neonatal, SDR, muerte perinatal
+
+Diagnóstico de DMG (OMS/IADPSG 2013) — entre semanas 24-28:
+- Glucosa ayunas ≥92 mg/dL (5.1 mmol/L), O
+- Glucosa 1h post 75g PTOG ≥180 mg/dL (10.0 mmol/L), O
+- Glucosa 2h post 75g PTOG ≥153 mg/dL (8.5 mmol/L)
+Cualquiera de los 3 criterios positivo = DMG
+
+Cribado precoz (1er trimestre, factores de riesgo):
+- Glucosa ayunas ≥126 mg/dL = DM previa al embarazo
+- Glucosa aleatoria ≥200 mg/dL + síntomas = DM previa
+- HbA1c ≥6.5% = DM previa
+
+Objetivos glucémicos en embarazo:
+- Ayunas: <95 mg/dL
+- 1h postprandial: <140 mg/dL
+- 2h postprandial: <120 mg/dL
+- HbA1c: <6.0% (ideal), <6.5% (aceptable) — en DPG
+
+Tratamiento:
+1. Dieta: 35-40 kcal/kg peso ideal/día; restricción CHO simples; 5-6 comidas pequeñas
+2. Ejercicio: 30 min caminata postprandial (reduce glucemia 20-30 mg/dL)
+3. Insulina: primera línea farmacológica en DMG
+   - Basal: NPH nocturna (0.2 U/kg/día inicial)
+   - Bolo: Insulina regular o análogos rápidos (lispro, aspart — seguros en embarazo)
+4. Metformina: alternativa en DMG si insulina no aceptada, pero atraviesa placenta
+
+Variables PIMA relevantes en embarazo:
+- Pregnancies (11996-6): número de embarazos previos — factor de riesgo DM2 posparto
+- Glucose en PTOG: clave para diagnóstico DMG
+
+Seguimiento postparto:
+- PTOG 75g a las 6-12 semanas posparto (excluir DM persistente)
+- Si PTOG normal: repetir anual o bianuamente (riesgo DM2 acumulativo)

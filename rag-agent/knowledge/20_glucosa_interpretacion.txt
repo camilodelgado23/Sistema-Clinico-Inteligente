@@ -1,0 +1,52 @@
+GLUCEMIA — VALORES E INTERPRETACIÓN CLÍNICA
+
+LOINC 2339-0: Glucosa plasmática 2h en PTOG (principal en dataset PIMA)
+LOINC 2345-7: Glucosa sérica (ayunas)
+LOINC 14749-6: Glucosa sérica (general)
+Unidades: mg/dL (SI: mmol/L; conversión: mg/dL × 0.0555 = mmol/L)
+
+Valores de referencia:
+Ayunas (≥8h sin ingesta calórica):
+- Normal: 70-99 mg/dL
+- Glucosa en ayunas alterada (GBA): 100-125 mg/dL
+- Diabetes mellitus: ≥126 mg/dL (confirmar en 2 ocasiones)
+
+Postprandial (2h post PTOG 75g):
+- Normal: <140 mg/dL
+- Tolerancia glucosa alterada (TGA): 140-199 mg/dL
+- Diabetes mellitus: ≥200 mg/dL
+
+Aleatoria (cualquier hora sin ayuno):
+- Diabetes mellitus + síntomas: ≥200 mg/dL (confirmatoria)
+
+HbA1c:
+- Normal: <5.7%
+- Prediabetes: 5.7-6.4%
+- Diabetes: ≥6.5%
+- Conversión a glucemia promedio (eAG): eAG(mg/dL) = 28.7 × HbA1c - 46.7
+
+Hipoglucemia:
+- Leve: 54-70 mg/dL (síntomas autonómicos: sudoración, temblor, palpitaciones)
+- Moderada: 40-54 mg/dL (síntomas neuroglucopénicos: confusión, dificultad habla)
+- Severa: <40 mg/dL o pérdida de consciencia (emergencia médica)
+- Umbral de hipoglucemia iatrogénica: <70 mg/dL (ADA)
+
+Hiperglucemia severa:
+- Crisis hiperglucémica no cetósica (HHS): glucemia >600 mg/dL, osmolalidad >320, sin cetosis
+- Cetoacidosis diabética (CAD): glucemia >250 mg/dL (puede ser menor), cetosis, pH <7.3
+
+Factores que alteran glucemia:
+- Elevan: estrés, infección, corticosteroides, algunos antipsicóticos
+- Reducen: ejercicio intenso, ayuno prolongado, alcohol (hipoglucemia diferida)
+- Interferencias analíticas: hemólisis, hiperlipidemia (falsamente baja)
+
+Monitoreo en tiempo real:
+- CGC (Continuous Glucose Monitoring): sensor intersticial, lectura c/5 min
+- TIR (Time in Range): % tiempo 70-180 mg/dL; objetivo ≥70%
+- TAR (Time Above Range): % tiempo >180 mg/dL; objetivo <25%
+- TBR (Time Below Range): % tiempo <70 mg/dL; objetivo <4%
+
+Interpretación en modelo PIMA:
+- Glucose (columna 2): valor en PTOG 2h — principal predictor del modelo (SHAP más alto)
+- Valores 0 en el dataset: imputados con mediana (127 mg/dL)
+- Umbral de riesgo alto en el modelo: Glucose >140 mg/dL con otros factores adversos

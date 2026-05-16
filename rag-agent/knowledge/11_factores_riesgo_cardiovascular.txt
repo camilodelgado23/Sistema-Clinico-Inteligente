@@ -1,0 +1,49 @@
+FACTORES DE RIESGO CARDIOVASCULAR EN DIABETES MELLITUS
+
+Riesgo cardiovascular aumentado en DM2:
+Los pacientes con DM2 tienen 2-4 veces mayor riesgo de ECV vs población general.
+La mortalidad CV es la principal causa de muerte en DM2 (50-80% de los casos).
+
+Factores de riesgo modificables:
+1. Hiperglucemia (HbA1c elevada)
+   - Por cada 1% de reducción en HbA1c: -14% ECV
+   - UKPDS: reducción 25% complicaciones microvasculares por cada 1% HbA1c
+
+2. Hipertensión arterial
+   - Presente en 70% de pacientes con DM2
+   - Objetivo: <130/80 mmHg (ACC/AHA 2023)
+   - Primera línea: IECA o ARA-II (nefroprotección)
+
+3. Dislipidemia
+   - Patrón típico DM2: triglicéridos altos, HDL bajo, LDL moderado pero aterogénico
+   - Objetivo LDL: <70 mg/dL con ECV establecida; <100 mg/dL sin ECV
+   - Estatinas: atorvastatina 40-80mg como primera línea
+
+4. Obesidad/Sobrepeso
+   - IMC ≥30: aumenta resistencia insulínica
+   - Obesidad central (CC >88cm mujeres, >102cm hombres): síndrome metabólico
+   - Pérdida peso ≥10%: puede lograr remisión DM2 (DiRECT trial)
+
+5. Tabaquismo
+   - Riesgo CV 2x mayor vs no fumadores con DM
+   - Cese: reduce riesgo 50% a 1-3 años
+
+6. Sedentarismo
+   - 150 min/semana ejercicio moderado: mejora HbA1c, presión, lípidos
+   - Entrenamiento resistencia + aeróbico: sinérgico
+
+Calculadoras de riesgo CV para DM:
+- SCORE2-Diabetes (ESC 2023): calibrada para Europa; aplica en Colombia
+- Framingham: puede subestimar en DM latinoamericana
+- ADVANCE risk score: diseñada específicamente para DM2
+
+Biomarcadores emergentes:
+- NT-proBNP: marcador insuficiencia cardíaca; cribado en DM
+- Troponina T ultrasensible: daño miocárdico subclínico
+- Proteína C reactiva ultrasensible: inflamación crónica
+
+Terapias con beneficio CV en DM2:
+- GLP-1 RA: liraglutida (LEADER), semaglutida (SUSTAIN-6) — reducción MACE
+- SGLT-2i: empagliflozina (EMPA-REG), dapagliflozina (DECLARE) — reducción hospitalización ICC
+- Estatinas: primera línea en DM con riesgo CV moderado-alto
+- Aspirina: solo en ECV establecida (no en prevención primaria DM)

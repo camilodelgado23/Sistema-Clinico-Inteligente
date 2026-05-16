@@ -1,0 +1,47 @@
+IMC, OBESIDAD Y SU RELACIÓN CON DIABETES MELLITUS
+
+Clasificación IMC (OMS/WHO):
+- <18.5: Bajo peso
+- 18.5-24.9: Peso normal
+- 25.0-29.9: Sobrepeso
+- 30.0-34.9: Obesidad Clase I
+- 35.0-39.9: Obesidad Clase II
+- ≥40.0: Obesidad Clase III (mórbida)
+
+Clasificación adaptada para población latinoamericana:
+- IMC ≥27.5: Sobrepeso en algunas poblaciones asiáticas y latinas (mayor riesgo metabólico)
+
+Relación obesidad-DM2:
+- 80-90% de pacientes con DM2 tienen sobrepeso u obesidad
+- Riesgo DM2 aumenta 7x con IMC 25-29.9 vs IMC normal
+- Riesgo DM2 aumenta 20x con IMC ≥35 vs IMC normal
+- Mecanismo: resistencia insulínica, lipotoxicidad, inflamación crónica, disfunción célula beta
+
+Obesidad central y síndrome metabólico:
+Criterios IDF/AHA 2009 (≥3 de 5):
+1. Circunferencia cintura: ≥88cm mujeres, ≥102cm hombres
+2. Triglicéridos ≥150 mg/dL o en tratamiento
+3. HDL <50 mg/dL mujeres, <40 mg/dL hombres
+4. PA ≥130/85 mmHg o en tratamiento
+5. Glucosa ayunas ≥100 mg/dL o en tratamiento antidiabético
+
+Intervención en obesidad para control DM2:
+- Pérdida 5-10% peso: mejora HbA1c 0.5-1.0%, PA y perfil lipídico
+- Pérdida ≥15% peso: remisión DM2 en 57% (DiRECT trial) a 2 años
+- Cirugía bariátrica: remisión DM2 en 40-80% a largo plazo
+
+Dieta en DM2 con obesidad:
+- Restricción calórica: déficit 500-750 kcal/día
+- Dieta mediterránea: mejor evidencia para reducción HbA1c y riesgo CV
+- Low-carb (<130g CHO/día): reducción rápida HbA1c y necesidad de medicación
+- DASH: efectiva para PA y control metabólico
+
+Actividad física recomendada:
+- Aeróbica: 150 min/semana intensidad moderada (≥3 días/semana)
+- Resistencia: 2-3 días/semana grupos musculares principales
+- No sedentarismo: interrumpir sedestación c/30 min (≤3 min de movimiento)
+- Objetivo glucémico con ejercicio: 100-180 mg/dL durante actividad física
+
+LOINC código IMC: 39156-5 (Body mass index BMI [Ratio])
+Unidades: kg/m2
+Cálculo: peso(kg) / talla²(m)

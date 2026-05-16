@@ -1,0 +1,40 @@
+DATASET PIMA INDIANS DIABETES — DESCRIPCIÓN CLÍNICA
+
+Fuente: UCI Machine Learning Repository / National Institute of Diabetes and Digestive and Kidney Diseases.
+Población: Mujeres ≥21 años de ascendencia Pima (Arizona, EE.UU.)
+Tamaño: 768 registros, 8 features, 1 variable objetivo (Outcome).
+
+Variables clínicas (con códigos LOINC):
+1. Pregnancies (11996-6): Número de embarazos. Relación con diabetes gestacional.
+2. Glucose (2339-0, mg/dL): Concentración de glucosa plasmática a las 2h en PTOG.
+   Valores ≥126: diagnóstico DM2. Rango normal: 70-140 mg/dL (2h post-carga).
+3. BloodPressure (55284-4, mmHg): Presión arterial diastólica.
+   Normal: <80. Hipertensión: ≥90. Fuerte predictor de síndrome metabólico.
+4. SkinThickness (39106-0, mm): Pliegue cutáneo del tríceps. Proxy de grasa subcutánea.
+   Normal: 20-30 mm mujeres. Obesidad: >35 mm.
+5. Insulin (14749-6, uU/mL): Insulina sérica 2h post-carga.
+   Normal: <140 uU/mL. Resistencia insulínica: >200 uU/mL.
+6. BMI (39156-5, kg/m2): Índice de Masa Corporal.
+   Normal: 18.5-24.9. Sobrepeso: 25-29.9. Obesidad: ≥30. Obesidad mórbida: ≥40.
+7. DiabetesPedigreeFunction (33914-3): Función pedigrí de diabetes. Score genético.
+   Rango: 0.078-2.42. Valores >0.5 indican riesgo genético significativo.
+8. Age (21612-7, años): Edad de la paciente. Riesgo aumenta con edad.
+
+Variable objetivo:
+- Outcome=1: Diabética (268 casos, 34.9%)
+- Outcome=0: No diabética (500 casos, 65.1%)
+
+Valores problemáticos (ceros biológicamente imposibles):
+- Glucose=0, BloodPressure=0, SkinThickness=0, Insulin=0, BMI=0 → imputar con mediana.
+
+Modelo XGBoost entrenado:
+- Preprocesamiento: Imputación mediana + StandardScaler
+- Exportado a ONNX INT8 para inferencia ≤400ms en CPU
+- Calibración isotónica (CalibratedClassifierCV, method='isotonic')
+- Métricas objetivo: F1 ≥ 0.75, AUC ≥ 0.80
+
+Relevancia clínica:
+El modelo PIMA permite identificar pacientes con alto riesgo de DM2 para cribado preventivo.
+Su uso conjunto con el modelo APTOS provee evaluación multimodal: riesgo sistémico (PIMA)
+más evaluación de daño orgánico retinal (APTOS), componentes complementarios del manejo
+integral del paciente diabético.

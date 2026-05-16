@@ -1,0 +1,53 @@
+INTEROPERABILIDAD HL7 FHIR R4 EN SISTEMAS CLÍNICOS
+
+Estándar FHIR R4 (Fast Healthcare Interoperability Resources):
+- Versión: R4 (Release 4, publicado 2019) — versión estable normativa
+- Paradigma: RESTful API + JSON/XML
+- Recursos: 145+ tipos de recursos clínicos y administrativos
+- URL base FHIR: [base]/fhir/{ResourceType}/{id}
+
+Operaciones REST FHIR:
+- GET [base]/Patient/{id}: Leer paciente
+- POST [base]/Patient: Crear paciente nuevo
+- PUT [base]/Patient/{id}: Actualizar (genera nueva versión en _history)
+- DELETE [base]/Patient/{id}: Soft-delete (active=false)
+- GET [base]/Patient?identifier={system}|{value}: Buscar por identificador
+- GET [base]/Patient/{id}/_history: Ver historial de versiones (soft-copy)
+
+Búsqueda FHIR:
+- ?_count=50: Paginación
+- ?_sort=-date: Orden descendente por fecha
+- ?status=final: Filtrar por estado
+- ?subject=Patient/{id}: Vincular a paciente específico
+- ?code=http://loinc.org|2339-0: Filtrar por código LOINC
+
+Bundle FHIR:
+- type: "searchset" para resultados de búsqueda
+- type: "transaction" para múltiples operaciones atómicas
+- total: número total de resultados
+- entry: array de recursos con fullUrl y resource
+
+Operaciones especiales:
+- $validate: Validar recurso FHIR
+- $everything: Recuperar todo lo relacionado a un paciente
+- $summary: Resumen clínico del paciente
+
+Terminologías integradas:
+- LOINC: códigos para observaciones de laboratorio e imágenes
+- SNOMED CT: codificación de diagnósticos, procedimientos, hallazgos
+- CIE-10: codificación diagnóstica (ICD-10 en Colombia)
+- RxNorm: medicamentos
+- UCUM: unidades de medida
+
+Seguridad FHIR:
+- OAuth 2.0 / SMART on FHIR para autorización
+- JWT Bearer tokens para API SuperUser
+- Auditoría mediante AuditEvent resource
+- Acceso granular por paciente (scopes: patient/*.read, patient/*.write)
+
+HAPI FHIR Server:
+- Implementación Java de FHIR R4 open-source
+- Backend: PostgreSQL (producción) vs H2 (desarrollo)
+- Configuración: application.yaml
+- Habilitación _history: hapi.fhir.allow_multiple_delete=true
+- Métricas: Spring Actuator en /actuator/health

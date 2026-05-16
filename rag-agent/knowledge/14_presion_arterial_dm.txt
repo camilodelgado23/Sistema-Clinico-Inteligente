@@ -1,0 +1,42 @@
+HIPERTENSIÓN ARTERIAL Y DIABETES MELLITUS
+
+Epidemiología:
+- HTA presente en 70-80% de pacientes con DM2
+- La coexistencia de HTA + DM multiplica el riesgo cardiovascular 4-8x
+- HTA + DM: riesgo de nefropatía 5x mayor que HTA o DM solos
+
+Objetivos de PA en DM2:
+- Objetivo general: <130/80 mmHg (ACC/AHA 2023; ADA 2024)
+- En adultos mayores frágiles: <140/90 mmHg para evitar hipotensión ortostática
+- En DM con proteinuria severa: <125/75 mmHg
+
+Diagnóstico:
+- PA ≥130/80 mmHg en ≥2 mediciones en ≥2 visitas
+- Monitoreo ambulatorio 24h (MAPA): gold standard
+- Monitoreo en casa (AMPA): complementario, 7 días consecutivos
+- Fenómeno bata blanca: excluir con MAPA o AMPA
+
+Tratamiento farmacológico primera línea (DM2 sin ERC):
+- IECA: enalapril, ramipril, perindopril (nefroprotección, anti-proteinuria)
+- ARA-II: losartán, valsartán, irbesartán (alternativa si tos con IECA)
+NO combinar IECA + ARA-II (hiperpotasemia, lesión renal)
+
+Con ERC (TFGe <60 o albuminuria >30 mg/g):
+- IECA o ARA-II obligatorio (independiente de PA)
+- SGLT-2i: empagliflozina, dapagliflozina (nefroprotección adicional)
+
+Segunda línea:
+- Calcioantagonistas dihidropiridínicos: amlodipino, nifedipino (no bradicardia)
+- Diuréticos tiazídicos: hidroclorotiazida, clortalidona (riesgo hiperglucemia leve)
+- Betabloqueadores: solo si ECV; enmascaran hipoglucemia
+
+Monitoreo PA en DM:
+- LOINC 55284-4: PA combinada sistólica/diastólica
+- LOINC 8480-6: PA sistólica
+- LOINC 8462-4: PA diastólica
+- Frecuencia: cada visita médica; en casa c/mañana y noche
+
+Hipotensión ortostática en DM:
+- Frecuente por neuropatía autonómica
+- Definición: caída ≥20 mmHg sistólica o ≥10 mmHg diastólica al ponerse de pie
+- Manejo: hidratación, medias compresión, fludrocortisona en casos severos

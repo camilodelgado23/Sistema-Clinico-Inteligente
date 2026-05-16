@@ -1,0 +1,35 @@
+GUÍA CLÍNICA: RETINOPATÍA DIABÉTICA
+
+Clasificación Internacional (ETDRS):
+- Nivel 0 — Sin RD: Sin lesiones visibles en retinografía
+- Nivel 1 — RD No Proliferativa Leve (RDNP Leve): Solo microaneurismas
+- Nivel 2 — RD No Proliferativa Moderada (RDNP Moderada): Más que solo microaneurismas
+- Nivel 3 — RD No Proliferativa Severa (RDNP Severa): Regla del 4-2-1
+  * Hemorragias/microaneurismas en 4 cuadrantes, O
+  * Arrosariamiento venoso en ≥2 cuadrantes, O
+  * Anomalías microvasculares intrarretinianas en ≥1 cuadrante
+- Nivel 4 — RD Proliferativa (RDP): Neovascularización o hemorragia vítrea/prerretiniana
+
+Edema Macular Diabético (EMD):
+- EMD Central: Engrosamiento o exudados duros ≤500 micras del centro de la fóvea
+- EMD No Central: Fuera de las 500 micras centrales
+
+Cribado en Colombia (Resolución MSPS):
+- DM tipo 1: inicio a los 5 años del diagnóstico, luego anual
+- DM tipo 2: al diagnóstico, luego anual
+- Embarazo con diabetes: al inicio, cada trimestre
+
+Modelo APTOS 2019 (EfficientNet-B0):
+- Clase 0 (No DR): Riesgo BAJO
+- Clase 1 (Mild): Riesgo BAJO
+- Clase 2 (Moderate): Riesgo MEDIO — referir a oftalmología
+- Clase 3 (Severe): Riesgo ALTO — tratamiento urgente
+- Clase 4 (Proliferative DR): Riesgo CRÍTICO — tratamiento inmediato
+
+Tratamiento:
+- RDNP leve/moderada: Control metabólico, PA y lípidos
+- RDNP severa: Panfotocoagulación láser (PFC) o antiangiogénicos
+- RDP: Vitrectomía, PFC, antiangiogénicos (anti-VEGF: ranibizumab, bevacizumab, aflibercept)
+- EMD central: Inyecciones intravítreas anti-VEGF + terapia láser focal
+
+Referencia: Preferred Practice Pattern 2023 — American Academy of Ophthalmology.

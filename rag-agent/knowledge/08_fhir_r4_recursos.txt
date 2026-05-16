@@ -1,0 +1,51 @@
+HL7 FHIR R4 — RECURSOS IMPLEMENTADOS EN CLINAI
+
+Patient:
+- Identificación colombiana: CC (cédula), TI (tarjeta identidad), RC (registro civil)
+- Sistema: https://www.registraduria.gov.co/cedula
+- Extensión étnica: http://hl7.org/fhir/StructureDefinition/patient-ethnicity
+- Soft-delete: active=false (Resolución 1995/1999)
+- Versionado: _history habilitado en HAPI FHIR
+
+Observation (variables clínicas LOINC):
+- 2339-0: Glucosa plasmática 2h (mg/dL)
+- 55284-4: Presión arterial (mmHg) — component diastólica/sistólica
+- 39156-5: IMC (kg/m2)
+- 14749-6: Insulina sérica (uU/mL)
+- 39106-0: Pliegue cutáneo tríceps (mm)
+- 11996-6: Número de embarazos
+- 33914-3: Función pedigrí diabetes (score)
+- 21612-7: Edad
+- 4548-4: HbA1c (%)
+- Status: registered | preliminary | final | amended | entered-in-error
+
+DiagnosticReport:
+- Código: 34133-9 (Summary note) — LOINC
+- Categoría: 11502-2 (Reporte de laboratorio/imagen)
+- Incluye: conclusión clínica, probabilidad calibrada del modelo
+- Firmado por: Practitioner reference
+
+RiskAssessment:
+- Status: preliminary | final
+- prediction.probabilityDecimal: salida calibrada del modelo
+- prediction.qualitativeRisk: SNOMED CT
+  * 281414001 = Low risk
+  * 281415000 = Moderate risk
+  * 281416004 = High risk
+  * 24484000 = Severe (critical)
+- Vinculado al DiagnosticReport
+
+Practitioner (Médico SuperUser):
+- identifier: número de licencia médica
+- qualification: CIE-10 para especialidad
+- Sistema: https://www.minsalud.gov.co/registro-medico
+
+AuditEvent (trazabilidad):
+- Registro de accesos de SuperUser externo
+- action: C(reate) R(ead) U(pdate) D(elete) E(xecute)
+- outcome: 0 (success), 4 (minor failure), 8 (serious failure)
+- entity: recurso accedido con Patient reference
+
+Regla de negocio crítica (Corte 2 heredada):
+Un médico NO puede cerrar una HC que tenga RiskReport sin firma electrónica.
+Backend responde HTTP 409 Conflict si se intenta eliminar paciente con reportes sin firmar.

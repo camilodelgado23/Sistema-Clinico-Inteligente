@@ -1,0 +1,49 @@
+NEFROPATÍA DIABÉTICA — DIAGNÓSTICO Y MANEJO
+
+Estadificación ERC (KDIGO 2022):
+G1: TFGe ≥90 ml/min/1.73m2 (normal-alta) — con marcadores daño
+G2: TFGe 60-89 ml/min/1.73m2 (levemente disminuida)
+G3a: TFGe 45-59 ml/min/1.73m2 (moderadamente disminuida)
+G3b: TFGe 30-44 ml/min/1.73m2 (moderadamente-severamente disminuida)
+G4: TFGe 15-29 ml/min/1.73m2 (severamente disminuida)
+G5: TFGe <15 ml/min/1.73m2 (falla renal)
+
+Estadificación albuminuria:
+A1: <30 mg/g Cr (normal a levemente aumentada)
+A2: 30-300 mg/g Cr (moderadamente aumentada) — microalbuminuria
+A3: >300 mg/g Cr (severamente aumentada) — macroalbuminuria / proteinuria franca
+
+Biomarcadores LOINC:
+- 69405-9: TFGe (CKD-EPI 2021)
+- 14957-5: Microalbuminuria en orina (24h)
+- 14959-1: Ratio albuminuria/creatininuria
+- 2160-0: Creatinina sérica
+
+Diagnóstico diferencial:
+Nefropatía diabética: inicio insidioso, sin hematuria, albuminuria precede a pérdida de TFGe,
+retina siempre comprometida en DM1 si hay nefropatía
+Glomerulopatía no diabética: inicio agudo, hematuria, biopsia diagnóstica
+
+Nefrotoxicidad de medios de contraste en DM:
+- Mayor riesgo con TFGe <45 ml/min
+- Suspender metformina 48h antes y después del contraste
+- Hidratación IV prerrenal obligatoria
+
+Ajuste de medicamentos en ERC con DM:
+- Metformina: suspender si TFGe <30; reducir si TFGe 30-45
+- Sulfonilureas: contraindicadas si TFGe <30 (riesgo hipoglucemia severa)
+- IECA/ARA-II: continuar hasta G4; monitorear K+ y creatinina
+- SGLT-2i: eficacia reducida con TFGe <45; suspender si TFGe <20
+- Insulina: aclaramiento renal reducido → riesgo hipoglucemia; reducir dosis 25-50%
+
+Preparación para reemplazo renal:
+- Iniciar diálisis: TFGe <15 o síntomas urémicos
+- Trasplante renal: primera opción si candidato; trasplante riñón-páncreas en DM1
+- Diálisis peritoneal vs hemodiálisis: según preferencia, acceso vascular, peritoneal
+
+Prevención de progresión:
+- IECA o ARA-II: pilar del tratamiento
+- SGLT-2i (empagliflozina, dapagliflozina): reducen progresión ERC diabética
+- Finerenona: nuevo agente (MRA no esteroideo) — reduce proteinuria
+- Control glucémico: HbA1c <7.5% (evitar hipoglucemia en ERC avanzada)
+- Dieta: restricción proteica moderada 0.8g/kg/día; restricción fosfatos en G3b+

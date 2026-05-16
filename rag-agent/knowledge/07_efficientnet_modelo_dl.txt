@@ -1,0 +1,50 @@
+MODELO DL — EFFICIENTNET-B0 PARA RETINOPATÍA DIABÉTICA (ONNX INT8)
+
+Dataset APTOS 2019:
+- 3,662 imágenes de fondo de ojo (retinografía)
+- 5 clases de severidad (0: sin RD, 4: RD proliferativa)
+- Split: 80% train, 10% val, 10% test
+- Distribución: clase 0 (49%), clase 1 (7%), clase 2 (27%), clase 3 (6%), clase 4 (10%)
+
+Arquitectura:
+- Base: EfficientNet-B0 (pretrained ImageNet)
+- Fine-tuning: última capa adaptada a 5 clases
+- Input: 224x224x3 (RGB), normalización ImageNet
+- Output: softmax 5 clases
+
+Técnicas de entrenamiento:
+- Data augmentation: rotación ±30°, flip horizontal/vertical, zoom ±20%
+- Manejo de clases desbalanceadas: class_weight inverso a frecuencia
+- Learning rate: cosine annealing, LR inicial 1e-4
+- Epochs: 30, batch_size: 16
+- Early stopping patience: 5 epochs
+
+Exportación ONNX:
+- torch.onnx.export con opset_version=12
+- Cuantización INT8 dinámica (onnxruntime quantization)
+- Reducción de 50% en tamaño del modelo
+- Latencia objetivo: ≤500ms/imagen en CPU
+
+Explicabilidad (Grad-CAM):
+- Genera mapa de calor sobre zonas de la retina más relevantes
+- Implementado con gradcam library sobre capas convolucionales
+- Grad-CAM guardado en MinIO como imagen .png adjunta al reporte
+
+Inferencia:
+- Microservicio FastAPI puerto 8002
+- Input: imagen base64 o multipart/form-data
+- Output: {"class": 2, "class_name": "Moderate DR", "probability": 0.84,
+           "risk_category": "MEDIUM", "calibrated": true, "gradcam_url": "..."}
+
+Métricas por clase (test set):
+- Clase 0 (No DR): F1=0.87, precision=0.89, recall=0.85
+- Clase 1 (Mild): F1=0.61, precision=0.58, recall=0.65
+- Clase 2 (Moderate): F1=0.78, precision=0.80, recall=0.77
+- Clase 3 (Severe): F1=0.72, precision=0.70, recall=0.74
+- Clase 4 (Proliferative): F1=0.83, precision=0.85, recall=0.81
+- Macro F1: 0.76, AUC OvR: 0.91
+
+Almacenamiento:
+- Modelo ONNX: MinIO bucket 'rag-documents/models/efficientnet_rd.onnx'
+- Imágenes procesadas: MinIO bucket 'clinical-images'
+- Grad-CAMs: MinIO bucket 'clinical-images/gradcam/'

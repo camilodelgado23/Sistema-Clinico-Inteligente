@@ -1,0 +1,23 @@
+GUÍA CLÍNICA: DIAGNÓSTICO DE DIABETES MELLITUS TIPO 2
+
+Criterios diagnósticos (ADA 2024):
+1. Glucemia en ayunas ≥ 126 mg/dL (7.0 mmol/L) — ayuno mínimo 8h
+2. Glucemia a las 2h de PTOG ≥ 200 mg/dL (11.1 mmol/L)
+3. HbA1c ≥ 6.5% (48 mmol/mol) — método certificado NGSP/DCCT
+4. Glucemia aleatoria ≥ 200 mg/dL con síntomas clásicos (poliuria, polidipsia, pérdida de peso)
+
+Pre-diabetes:
+- Glucosa en ayunas 100-125 mg/dL (alterada en ayunas)
+- Glucosa 2h PTOG 140-199 mg/dL (tolerancia alterada)
+- HbA1c 5.7-6.4% (prediabetes)
+
+Confirmación: Se requiere un segundo test confirmatorio en ausencia de síntomas.
+En pacientes sintomáticos, un solo test ≥ 200 mg/dL es suficiente.
+
+LOINC relevantes:
+- 2339-0: Glucosa plasmática 2h post-carga
+- 41604-0: HbA1c IFCC
+- 4548-4: HbA1c NGSP
+- 14749-6: Glucosa sérica
+
+Referencia: American Diabetes Association. Standards of Medical Care in Diabetes 2024.

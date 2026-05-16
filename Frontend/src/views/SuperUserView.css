@@ -1,0 +1,70 @@
+.su-layout { display: flex; flex-direction: column; gap: 1rem; }
+
+.su-tabs {
+  display: flex; gap: 0.25rem; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border-1);
+  padding-bottom: 0;
+}
+
+.su-tab {
+  padding: 0.5rem 0.875rem;
+  border: none; background: transparent;
+  color: var(--text-3); font-size: 0.8rem; font-weight: 500;
+  cursor: pointer; border-radius: var(--r-sm) var(--r-sm) 0 0;
+  border-bottom: 2px solid transparent;
+  transition: all var(--t-fast); margin-bottom: -1px;
+}
+
+.su-tab:hover { color: var(--text-1); background: var(--bg-3); }
+.su-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+.su-content { padding: 1.5rem; }
+
+.su-form { display: flex; flex-direction: column; gap: 0.875rem; max-width: 440px; }
+
+.su-form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; max-width: 560px;
+}
+
+.form-group { display: flex; flex-direction: column; gap: 0.375rem; }
+
+.su-result {
+  margin-top: 1.25rem;
+  background: var(--bg-1);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  padding: 1rem;
+}
+
+.result-label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-3); font-weight: 600; margin-bottom: 0.5rem;
+}
+
+.result-code {
+  display: block; font-family: var(--font-mono); font-size: 0.72rem;
+  color: var(--cyan); word-break: break-all;
+}
+
+.result-json {
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-2);
+  max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+}
+
+.pill {
+  padding: 0.3rem 0.6rem; border-radius: var(--r-full);
+  border: 1px solid var(--border-2); background: transparent;
+  color: var(--text-3); font-size: 0.72rem; font-weight: 500;
+  cursor: pointer; transition: all var(--t-fast);
+}
+.pill:hover { background: var(--bg-3); color: var(--text-1); }
+.pill--active { background: var(--cyan-dim); border-color: rgba(56,189,248,0.3); color: var(--cyan); }
+
+.inference-result {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 1rem; background: var(--bg-2); border-radius: var(--r-md);
+  margin-bottom: 0.75rem;
+}
+
+.infer-prob { font-size: 3rem; font-weight: 700; line-height: 1; letter-spacing: -0.03em; }
+.infer-label { font-size: 0.72rem; text-transform: uppercase; color: var(--text-3); letter-spacing: 0.06em; margin-top: 0.25rem; }

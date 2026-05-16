@@ -1,0 +1,25 @@
+{
+  "name": "clinai-frontend",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev":     "vite",
+    "build":   "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react":               "^18.3.1",
+    "react-dom":           "^18.3.1",
+    "react-router-dom":    "^6.23.1",
+    "recharts":            "^2.12.7",
+    "zustand":             "^4.5.2",
+    "axios":               "^1.7.2",
+    "date-fns":            "^3.6.0",
+    "react-hot-toast":     "^2.4.1",
+    "react-zoom-pan-pinch":"^3.4.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.0",
+    "vite":                 "^5.2.0"
+  }
+}

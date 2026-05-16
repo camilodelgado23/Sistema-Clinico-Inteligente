@@ -1,0 +1,43 @@
+MARCO REGULATORIO COLOMBIANO — SALUD DIGITAL E INTEROPERABILIDAD
+
+Resolución 866 de 2021 (MSPS):
+- Adopta FHIR R4 como estándar de interoperabilidad en el SGSSS
+- Establece el Modelo de Información en Salud (MIS)
+- Obliga a prestadores de servicios de salud a implementar interoperabilidad
+- Define terminologías: LOINC, SNOMED CT, CIE-10, CUPS, RIPS
+- Aplica a: EPS, IPS, laboratorios clínicos, imágenes diagnósticas
+
+Ley 1581 de 2012 — Habeas Data:
+- Protección de datos personales en Colombia
+- Datos sensibles de salud: categoría especial con mayor protección
+- Principios: finalidad, libertad, veracidad, transparencia, acceso restringido
+- Penalizaciones: hasta 2,000 SMMLV por infracciones graves
+- Obligaciones: consentimiento explícito, política de tratamiento de datos
+- Registro ante SIC (Superintendencia de Industria y Comercio)
+
+Resolución 1995 de 1999 (Ministerio de Salud):
+- Establece normas para el manejo de la Historia Clínica (HC)
+- Características: integralidad, secuencialidad, racionalidad científica, disponibilidad, oportunidad
+- Custodia: 20 años mínimo para registros en papel; electrónicos indefinidamente
+- No se permite destrucción o alteración de registros clínicos (soft-delete obligatorio)
+- Acceso: paciente, profesional tratante, autoridades judiciales/sanitarias
+
+Ley 2015 de 2020 — Historia Clínica Electrónica Interoperable:
+- Marco para HCE en Colombia
+- Interoperabilidad entre prestadores del SGSSS
+- Portabilidad de la información del paciente
+- Estándares técnicos: FHIR R4, OpenEHR
+
+Decreto 2591 de 2016:
+- Intercambio electrónico de información en el sector salud
+- Plataformas de interoperabilidad: INTEROP
+
+RIPS (Resolución 3374/2000):
+- Registro Individual de Prestación de Servicios de Salud
+- Reportes: usuarios, servicios, consultas, procedimientos, urgencias, hospitalizaciones
+- Formato: XML estructurado para envío a EPS y Ministerio
+
+Ley 23 de 1981 — Ética médica:
+- Confidencialidad de la información del paciente
+- Historia clínica como documento privado
+- Responsabilidad médica por uso inadecuado de información

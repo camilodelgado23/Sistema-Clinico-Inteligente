@@ -1,0 +1,1210 @@
+{
+  "info": {
+    "_postman_id": "eeb7fdd0-ed17-420a-9b4d-a6951a5f4e16",
+    "name": "ClinAI — Sistema Clínico Digital Interoperable",
+    "description": "Colección completa: Auth, FHIR, Inferencia ML/DL/Multimodal, Firma RiskReport, Audit Log",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "26953276"
+  },
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Login médico1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.access_token) pm.collectionVariables.set('TOKEN', r.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Access-Key",
+                "value": "2aca485d4737d306c54855e7658e4676"
+              },
+              {
+                "key": "X-Permission-Key",
+                "value": "32002b84b268b49ab1909fbca76323e0"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/auth/login",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login médico3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.access_token) pm.collectionVariables.set('TOKEN', r.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Access-Key",
+                "value": "b9beafe1f1fecec10ce8082a351b67ac"
+              },
+              {
+                "key": "X-Permission-Key",
+                "value": "427308ff69e8dcec9a4b7a177ba641b2"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/auth/login",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.access_token) pm.collectionVariables.set('TOKEN', r.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Access-Key",
+                "value": "admin-access-key-001"
+              },
+              {
+                "key": "X-Permission-Key",
+                "value": "admin-perm-key-001"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/auth/login",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/auth/logout",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👤 Pacientes (FHIR Patient)",
+      "item": [
+        {
+          "name": "Listar pacientes (paginado)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Patient?limit=10&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar pacientes — página 2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Patient?limit=5&offset=5",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                },
+                {
+                  "key": "offset",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener paciente por ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Patient/{{PATIENT_ID}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "{{PATIENT_ID}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear paciente completo (con observaciones)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.id) pm.collectionVariables.set('PATIENT_ID', r.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Paciente Demo\",\n  \"birth_date\": \"1985-06-15\",\n  \"identification_doc\": \"12345678\",\n  \"ground_truth\": 1,\n  \"observations\": [\n    { \"loinc_code\": \"2339-0\",  \"value\": 148, \"unit\": \"mg/dL\" },\n    { \"loinc_code\": \"55284-4\", \"value\": 85,  \"unit\": \"mmHg\" },\n    { \"loinc_code\": \"39156-5\", \"value\": 32.1, \"unit\": \"kg/m2\" },\n    { \"loinc_code\": \"14749-6\", \"value\": 18,  \"unit\": \"uU/mL\" },\n    { \"loinc_code\": \"21612-7\", \"value\": 38,  \"unit\": \"a\" },\n    { \"loinc_code\": \"11996-6\", \"value\": 2,   \"unit\": \"count\" },\n    { \"loinc_code\": \"39106-0\", \"value\": 28,  \"unit\": \"mm\" },\n    { \"loinc_code\": \"33914-3\", \"value\": 0.52, \"unit\": \"score\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Patient/full",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "full"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verificar si paciente puede cerrarse",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Patient/{{PATIENT_ID}}/can-close",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "{{PATIENT_ID}}",
+                "can-close"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft-delete paciente (ADMIN)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Patient/{{PATIENT_ID}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "{{PATIENT_ID}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Restaurar paciente (ADMIN)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Patient/{{PATIENT_ID}}/restore",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "{{PATIENT_ID}}",
+                "restore"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📊 Observaciones (FHIR Observation)",
+      "item": [
+        {
+          "name": "Listar observaciones del paciente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Observation?subject={{PATIENT_ID}}&limit=50&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Observation"
+              ],
+              "query": [
+                {
+                  "key": "subject",
+                  "value": "{{PATIENT_ID}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear observación LOINC",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{PATIENT_ID}}\",\n  \"loinc_code\": \"2339-0\",\n  \"value\": 148.0,\n  \"unit\": \"mg/dL\",\n  \"status\": \"final\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Observation",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Observation"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🖼️ Imágenes (FHIR Media)",
+      "item": [
+        {
+          "name": "Listar imágenes del paciente (con presigned URLs)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "?subject={{PATIENT_ID}}&presign=true&limit=20",
+              "query": [
+                {
+                  "key": "subject",
+                  "value": "{{PATIENT_ID}}"
+                },
+                {
+                  "key": "presign",
+                  "value": "true"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Subir imagen (multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "patient_id",
+                  "value": "{{PATIENT_ID}}",
+                  "type": "text"
+                },
+                {
+                  "key": "modality",
+                  "value": "FUNDUS",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "value": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Media/upload",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Media",
+                "upload"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener URL de imagen por ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/Media/f0f82ced-5f79-411b-b2c7-68158190843e/url",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "Media",
+                "f0f82ced-5f79-411b-b2c7-68158190843e",
+                "url"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🤖 Inferencia IA",
+      "item": [
+        {
+          "name": "Ejecutar inferencia ML (tabular)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.task_id) pm.collectionVariables.set('TASK_ID', r.task_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{PATIENT_ID}}\",\n  \"model_type\": \"ML\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/infer",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "infer"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ejecutar inferencia DL (imagen)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.task_id) pm.collectionVariables.set('TASK_ID', r.task_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{PATIENT_ID}}\",\n  \"model_type\": \"DL\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/infer",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "infer"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ejecutar inferencia MULTIMODAL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.task_id) pm.collectionVariables.set('TASK_ID', r.task_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{PATIENT_ID}}\",\n  \"model_type\": \"MULTIMODAL\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/infer",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "infer"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consultar estado de tarea (polling)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.result_id) pm.collectionVariables.set('REPORT_ID', r.result_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/infer/{{TASK_ID}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "infer",
+                "{{TASK_ID}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📋 RiskAssessment — Firma médica",
+      "item": [
+        {
+          "name": "Listar reportes de riesgo del paciente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/RiskAssessment/?subject={{PATIENT_ID}}&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "RiskAssessment",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "subject",
+                  "value": "{{PATIENT_ID}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener reporte por ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/RiskAssessment/{{REPORT_ID}}",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "RiskAssessment",
+                "{{REPORT_ID}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "✅ Firmar reporte — ACEPTADO",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"ACCEPTED\",\n  \"notes\": \"Resultado revisado y aceptado. Paciente en seguimiento.\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/RiskAssessment/{{REPORT_ID}}/sign",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "RiskAssessment",
+                "{{REPORT_ID}}",
+                "sign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "❌ Firmar reporte — RECHAZADO",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"REJECTED\",\n  \"notes\": \"Resultado no concordante con el cuadro clínico.\",\n  \"rejection_reason\": \"Imagen de baja calidad — repetir estudio\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/fhir/RiskAssessment/{{REPORT_ID}}/sign",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "fhir",
+                "RiskAssessment",
+                "{{REPORT_ID}}",
+                "sign"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔍 Audit Log",
+      "item": [
+        {
+          "name": "Listar audit log (últimos 20)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/audit-log?limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Audit log — filtrado por acción CREATE_PATIENT",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/audit-log?action=CREATE_PATIENT&limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "CREATE_PATIENT"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Audit log — filtrado por acción INFERENCE_COMPLETED",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/audit-log?action=INFERENCE_COMPLETED&limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "INFERENCE_COMPLETED"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Audit log — filtrado por acción SIGN_REPORT",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/audit-log?action=SIGN_REPORT&limit=20&offset=0",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "action",
+                  "value": "SIGN_REPORT"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Audit log — paginación página 2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/audit-log?limit=20&offset=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "offset",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "📥 Exportar audit log — JSON",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/audit-log/export?format=json ",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "admin",
+                "audit-log",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "json "
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "📥 Exportar audit log — CSV",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{TOKEN}}"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/admin/audit-log/export?format=csv",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "admin",
+                "audit-log",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "csv"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "⚙️ Health Checks",
+      "item": [
+        {
+          "name": "Backend health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://24.144.105.184:8000/health",
+              "protocol": "http",
+              "host": [
+                "24",
+                "144",
+                "105",
+                "184"
+              ],
+              "port": "8000",
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "ML Service health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://24.144.105.184:8001/health",
+              "protocol": "http",
+              "host": [
+                "24",
+                "144",
+                "105",
+                "184"
+              ],
+              "port": "8001",
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "DL Service health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://24.144.105.184:8002/health",
+              "protocol": "http",
+              "host": [
+                "24",
+                "144",
+                "105",
+                "184"
+              ],
+              "port": "8002",
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Orchestrator health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://24.144.105.184:8003/health",
+              "protocol": "http",
+              "host": [
+                "24",
+                "144",
+                "105",
+                "184"
+              ],
+              "port": "8003",
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://24.144.105.184:8000"
+    },
+    {
+      "key": "TOKEN",
+      "value": ""
+    },
+    {
+      "key": "PATIENT_ID",
+      "value": ""
+    },
+    {
+      "key": "TASK_ID",
+      "value": ""
+    },
+    {
+      "key": "REPORT_ID",
+      "value": ""
+    }
+  ]
+}

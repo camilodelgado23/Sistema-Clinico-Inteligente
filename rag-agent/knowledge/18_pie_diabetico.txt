@@ -1,0 +1,51 @@
+PIE DIABÉTICO — DIAGNÓSTICO Y PREVENCIÓN
+
+Epidemiología:
+- 15-25% de diabéticos desarrollan úlcera en pie en su vida
+- Causa principal de amputaciones no traumáticas de extremidades inferiores
+- Mortalidad post-amputación a 5 años: 70% (peor que muchos cánceres)
+- Colombia: 2,000+ amputaciones/año por pie diabético
+
+Fisiopatología:
+Triada: neuropatía + vasculopatía + infección
+
+Neuropatía sensitiva: pérdida de sensación protectora → trauma no detectado
+Neuropatía motora: deformidades del pie (dedos en garra, Charcot)
+Neuropatía autonómica: anhidrosis, fisuras, piel seca → puerta de entrada bacteriana
+Enfermedad arterial periférica: isquemia → necrosis
+
+Clasificación Wagner:
+- Grado 0: Pie en riesgo, sin úlcera
+- Grado 1: Úlcera superficial (epidermis/dermis)
+- Grado 2: Úlcera profunda (tendón, cápsula, hueso)
+- Grado 3: Úlcera profunda + osteomielitis o absceso
+- Grado 4: Gangrena localizada (dedo, antepié)
+- Grado 5: Gangrena extensa del pie
+
+Clasificación Texas (Wagner-Armstrong):
+Agrega estadios A-D para isquemia e infección a cada grado Wagner.
+
+Evaluación del pie diabético:
+- Monofilamento 10g (Semmes-Weinstein): 10 puntos plantar — ≥1 no percibido = neuropatía
+- Diapasón 128 Hz: vibración en maléolo medial
+- ITB: <0.9 = EAP; >1.3 = calcificación (falsamente normal)
+- Doppler vascular: morfología de onda, velocidad
+- RMN pie: gold standard para osteomielitis
+
+Tratamiento:
+- Grado 0-1: Desbridamiento, apósito húmedo, descarga (yeso de contacto total)
+- Grado 2-3: Desbridamiento quirúrgico + antibióticos IV + revascularización si isquémica
+- Grado 4-5: Amputación de salvataje o mayor según viabilidad
+
+Antibioticoterapia empírica en pie diabético infectado:
+- Leve (sin isquemia): amoxicilina-clavulanato VO 7-14 días
+- Moderado: piperacilina-tazobactam IV o cefazolina + metronidazol
+- Severo/MRSA sospechado: vancomicina + pip-tazo
+
+Prevención (mensual por el médico, diaria por el paciente):
+- Examen visual diario del pie (incluye espacios interdigitales)
+- Calzado terapéutico a medida (profundo, sin costuras internas)
+- Corte de uñas recto (no en arco)
+- Temperatura del agua del baño con codo (no con pie)
+- Hidratación piel con crema (no entre dedos)
+- Plantillas de descarga en áreas de presión aumentada

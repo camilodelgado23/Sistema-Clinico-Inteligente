@@ -1,0 +1,45 @@
+INSULINOTERAPIA EN DIABETES MELLITUS TIPO 2
+
+Indicaciones de insulinoterapia:
+- HbA1c >10% o glucemia >300 mg/dL al diagnóstico
+- Falla de triple terapia oral (HbA1c >8% con 3 antidiabéticos orales)
+- Enfermedad intercurrente severa, cirugía mayor
+- Embarazo con diabetes
+- Contraindicación o intolerancia a antidiabéticos orales
+- DM2 con fenotipo de DM1 (anticuerpos positivos)
+
+Tipos de insulina:
+Acción rápida: Insulina regular (30-60 min inicio, 2-4h pico, 6-8h duración)
+Análogos de acción rápida: Lispro, Aspart, Glulisina (15 min inicio, 1-2h pico, 3-5h duración)
+Acción intermedia: NPH (2-4h inicio, 6-10h pico, 14-18h duración)
+Análogos de acción prolongada: Glargina U100 (2-4h inicio, sin pico, 20-24h); Detemir (1-3h, 6-8h pico, 18-23h); Degludec (1-2h, sin pico, >42h)
+Premezclas: 70/30 NPH/regular; 75/25 lispro; 50/50
+
+Esquemas de insulinoterapia:
+1. Basal: Glargina o detemir una vez/día — iniciar 10 U o 0.1-0.2 U/kg/día
+   Ajuste: +2U cada 3 días hasta glucemia ayunas 80-130 mg/dL
+
+2. Basal-plus: Basal + 1 análogo rápido en la comida de mayor hiperglucemia postprandial
+
+3. Basal-bolo: Análogo prolongado 1x/día + análogo rápido en cada comida
+   Dosis bolo: 0.05-0.1 U/kg por comida, ajustar por autoCONTROL
+
+4. Premezcla 2x/día: Alternativa en adherencia limitada al automonitoreo
+
+Autoajuste de dosis (regla 1800 para análogos rápidos):
+Factor de sensibilidad = 1800 / dosis diaria total de insulina
+Corrección = (glucemia actual - objetivo) / factor de sensibilidad
+
+Hipoglucemia — manejo:
+- Leve-moderada (consciente): 15g glucosa oral, remedir en 15 min
+- Severa (inconsciente): Glucagón 1mg IM/SC o dextrosa IV 50% 25-50mL
+
+Efectos adversos:
+- Hipoglucemia: principal limitante
+- Ganancia de peso (2-4 kg promedio)
+- Lipodistrofia (rotar zonas de inyección)
+- Edema inicial por retención hídrica
+
+Almacenamiento:
+- Sin abrir: refrigerador 2-8°C, hasta fecha vencimiento
+- Abierto: temperatura ambiente (<30°C) 28-30 días

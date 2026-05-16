@@ -1,0 +1,35 @@
+{
+  "dataset": "APTOS 2019 Blindness Detection",
+  "architecture": "EfficientNet-B0 fine-tuned",
+  "num_classes": 5,
+  "class_names": [
+    "No DR",
+    "Mild",
+    "Moderate",
+    "Severe",
+    "Proliferative DR"
+  ],
+  "risk_map": {
+    "0": "LOW",
+    "1": "LOW",
+    "2": "MEDIUM",
+    "3": "HIGH",
+    "4": "CRITICAL"
+  },
+  "img_size": 224,
+  "best_val_f1": 0.7809,
+  "epochs": 10,
+  "normalize": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "clinical_note": "Retinopat\u00eda diab\u00e9tica detectada mediante fondos de ojo. Clases 3-4 corresponden a riesgo HIGH/CRITICAL. Complementa el modelo tabular PIMA de riesgo de diabetes."
+}

@@ -1,0 +1,30 @@
+GUÍA: CONTROL GLUCÉMICO EN DIABETES MELLITUS TIPO 2
+
+Objetivos glucémicos (ADA 2024):
+- HbA1c < 7.0% para la mayoría de adultos no embarazadas con DM2
+- HbA1c < 8.0% para adultos mayores frágiles o con múltiples comorbilidades
+- HbA1c < 6.5% para pacientes jóvenes sin hipoglucemia significativa
+- Glucemia preprandial: 80-130 mg/dL
+- Glucemia postprandial (2h): <180 mg/dL
+
+Monitoreo glucémico:
+- HbA1c: cada 3 meses si fuera de meta, cada 6 meses si estable
+- Automonitoreo (SMBG): al menos 4 veces/día en insulinoterapia
+- Monitoreo continuo de glucosa (CGC): recomendado en insulinoterapia intensificada
+
+Algoritmo de tratamiento farmacológico:
+1. Primera línea: Metformina (si TFG ≥30) + cambios de estilo de vida
+2. Segunda línea (con ECV/ICC/ERC): GLP-1 RA o SGLT-2i (evidencia cardiovascular)
+   - ECV establecida: preferir GLP-1 RA (liraglutida, semaglutida)
+   - ICC o ERC: preferir SGLT-2i (empagliflozina, dapagliflozina)
+3. Si HbA1c >10%: iniciar insulina ± GLP-1 RA
+4. Insulinoterapia: comenzar con insulina basal (NPH, glargina, detemir)
+
+Indicadores de buen control:
+- HbA1c en meta durante 6+ meses
+- Ausencia de hipoglucemias severas
+- TAS <130/80 mmHg
+- LDL <70 mg/dL si ECV; <100 mg/dL sin ECV
+- Cese del tabaquismo
+
+Referencia: ADA Standards of Care 2024, Sección 6. ALAD 2023.

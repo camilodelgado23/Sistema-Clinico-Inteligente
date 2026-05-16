@@ -1,0 +1,46 @@
+MODELO ML — XGBOOST PARA PREDICCIÓN DE DIABETES (ONNX INT8)
+
+Arquitectura del modelo:
+- Algoritmo: XGBoost (eXtreme Gradient Boosting)
+- n_estimators: 300, max_depth: 6, learning_rate: 0.05
+- subsample: 0.8, colsample_bytree: 0.8
+- scale_pos_weight: calculado según desbalance de clases
+
+Pipeline de preprocesamiento:
+1. Imputación de valores cero (biológicamente imposibles) con mediana por variable
+2. Normalización: StandardScaler (media=0, desviación=1)
+3. El pipeline completo se serializa junto al modelo
+
+Calibración de probabilidades:
+- CalibratedClassifierCV con method='isotonic'
+- Corrige sobreconfianza del ensemble
+- Probabilidades calibradas via PTOG-style isotonic regression
+- Método de evaluación: expected calibration error (ECE) < 0.05
+
+Exportación ONNX:
+- Herramienta: sklearn2onnx / onnxmltools
+- Target opset: 12 (compatible onnxruntime ≥1.8)
+- Cuantización INT8: reduce modelo a 1/4 del tamaño original
+- Latencia objetivo: ≤400ms en CPU sin GPU
+
+Inferencia en producción:
+- Runtime: onnxruntime 1.18
+- Microservicio FastAPI puerto 8001
+- Input: JSON con 8 features LOINC-coded
+- Output: {"probability": 0.734, "prediction": 1, "risk_category": "HIGH", "calibrated": true}
+
+Categorías de riesgo:
+- LOW: probabilidad < 0.30
+- MEDIUM: probabilidad 0.30-0.59
+- HIGH: probabilidad 0.60-0.79
+- CRITICAL: probabilidad ≥ 0.80
+
+MLflow tracking:
+- Experimento: "diabetes_xgboost"
+- Métricas logueadas: F1, AUC-ROC, accuracy, ECE, latencia_p95
+- Artefactos: modelo .onnx, scaler .pkl, calibrator .pkl, confusion_matrix.png
+
+Interpretabilidad (SHAP):
+- TreeExplainer para valores SHAP
+- Features más importantes: Glucose > BMI > Age > DiabetesPedigreeFunction
+- SHAP values incluidos en el DiagnosticReport FHIR como extensión

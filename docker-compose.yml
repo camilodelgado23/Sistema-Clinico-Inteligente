@@ -1,0 +1,259 @@
+version: "3.9"
+
+networks:
+  clinical_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  mlflow_data:
+  faiss_data:
+
+services:
+
+  # ── PROXY ──────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+      - frontend
+      - rag-agent
+    networks:
+      - clinical_net
+    restart: unless-stopped
+
+  # ── FRONTEND ───────────────────────────────────────────────────────────────
+  frontend:
+    build: ./Frontend
+    expose:
+      - "3000"
+    networks:
+      - clinical_net
+    restart: unless-stopped
+
+  # ── POSTGRESQL (backend app + HAPI FHIR + MLflow) ──────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: clinai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clinai_secret}
+      POSTGRES_DB: clinai_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    expose:
+      - "5432"
+    networks:
+      - clinical_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinai -d clinai_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── BACKEND ────────────────────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    expose:
+      - "8000"
+    ports:
+      - "8000:8000"
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - clinical_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── FHIR SERVER (HAPI con PostgreSQL — NO H2) ───────────────────────────────
+  fhir-server:
+    image: hapiproject/hapi:v7.2.0
+    expose:
+      - "8080"
+    environment:
+      spring.datasource.url: jdbc:postgresql://postgres:5432/hapi_fhir
+      spring.datasource.username: clinai
+      spring.datasource.password: ${POSTGRES_PASSWORD:-clinai_secret}
+      spring.datasource.driverClassName: org.postgresql.Driver
+      spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgres94Dialect
+      hapi.fhir.default_encoding: JSON
+      hapi.fhir.fhir_version: R4
+      hapi.fhir.allow_multiple_delete: "true"
+      hapi.fhir.expunge_enabled: "false"
+      hapi.fhir.narrative_enabled: "false"
+      hapi.fhir.bulk_export_enabled: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - clinical_net
+    restart: unless-stopped
+
+  # ── ML SERVICE ─────────────────────────────────────────────────────────────
+  ml-service:
+    build: ./ml-service
+    expose:
+      - "8001"
+    ports:
+      - "8001:8001"
+    env_file: .env
+    networks:
+      - clinical_net
+    restart: unless-stopped
+
+  # ── DL SERVICE ─────────────────────────────────────────────────────────────
+  dl-service:
+    build: ./dl-service
+    expose:
+      - "8002"
+    ports:
+      - "8002:8002"
+    env_file: .env
+    networks:
+      - clinical_net
+    restart: unless-stopped
+
+  # ── ORCHESTRATOR ───────────────────────────────────────────────────────────
+  orchestrator:
+    build: ./orchestrator
+    expose:
+      - "8003"
+    ports:
+      - "8003:8003"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ml-service:
+        condition: service_started
+      dl-service:
+        condition: service_started
+    networks:
+      - clinical_net
+    restart: unless-stopped
+
+  # ── RAG AGENT ──────────────────────────────────────────────────────────────
+  rag-agent:
+    build: ./rag-agent
+    expose:
+      - "8004"
+    ports:
+      - "8004:8004"
+    env_file: .env
+    volumes:
+      - faiss_data:/app/faiss_index
+      - ./rag-agent/knowledge:/app/knowledge:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - clinical_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── REDIS (memoria agente) ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - clinical_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── MINIO ──────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+      MINIO_API_CORS_ALLOW_METHODS: "GET,PUT,POST,DELETE,HEAD"
+      MINIO_SERVER_URL: ${MINIO_SERVER_URL:-http://localhost:9000}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-http://localhost:9001}
+    volumes:
+      - minio_data:/data
+    networks:
+      - clinical_net
+    restart: unless-stopped
+
+  # ── MINIO INIT ─────────────────────────────────────────────────────────────
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin};
+      mc mb --ignore-existing local/clinical-images;
+      mc mb --ignore-existing local/rag-documents;
+      echo 'Buckets listos';
+      "
+    networks:
+      - clinical_net
+
+  # ── MLFLOW (con PostgreSQL backend) ────────────────────────────────────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.13.0
+    command: >
+      bash -c "pip install psycopg2-binary --quiet &&
+      mlflow server
+        --host 0.0.0.0
+        --port 5000
+        --backend-store-uri postgresql://clinai:${POSTGRES_PASSWORD:-clinai_secret}@postgres:5432/mlflow_db
+        --default-artifact-root /mlflow/artifacts"
+    expose:
+      - "5000"
+    volumes:
+      - mlflow_data:/mlflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - clinical_net
+    restart: unless-stopped
+
+  # ── MAILHOG ────────────────────────────────────────────────────────────────
+  mailhog:
+    image: mailhog/mailhog
+    expose:
+      - "1025"
+      - "8025"
+    networks:
+      - clinical_net
+    restart: unless-stopped

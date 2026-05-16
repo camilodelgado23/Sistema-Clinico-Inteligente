@@ -1,0 +1,24 @@
+artifact_path: "file:///C:/Users/camilo/Documents/Talleres y Proyectos Salud Digital/Sistema\
+  \ Cl\xEDnico Digital Interoperable/.claude/worktrees/sad-fermi-d4dd31/ml-service/mlruns/0/models/m-47d5be68a8234119b6e4670d2974ecf3/artifacts"
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.10.11
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.7.2
+    skops_trusted_types: null
+mlflow_version: 3.11.1
+model_id: m-47d5be68a8234119b6e4670d2974ecf3
+model_size_bytes: 1604039
+model_uuid: m-47d5be68a8234119b6e4670d2974ecf3
+prompts: null
+run_id: d31912256d174b33bc2e7eb1052a5992
+utc_time_created: '2026-05-16 04:03:05.567370'

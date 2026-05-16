@@ -1,0 +1,8 @@
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+asyncpg==0.29.0
+onnxruntime==1.17.3
+numpy==1.26.4
+shap==0.45.1
+pydantic==2.7.1
+python-dotenv==1.0.1
