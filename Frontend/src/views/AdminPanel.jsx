@@ -1965,20 +1965,37 @@ export default function AdminPanel() {
 
       <StatsBar stats={stats} alerts={alerts} />
 
-      <div style={{ display: 'flex', gap: '0.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
-        {TABS.map(t => (
-          <button key={t} onClick={() => setActiveTab(t)}
-            style={{
-              padding: '0.625rem 1rem', background: 'none', border: 'none',
-              borderBottom: activeTab === t ? '2px solid var(--cyan)' : '2px solid transparent',
-              color: activeTab === t ? 'var(--cyan)' : 'var(--text-secondary)',
-              fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
-              letterSpacing: '0.05em', textTransform: 'uppercase',
-              cursor: 'pointer', transition: 'all 0.15s', marginBottom: '-1px',
+      <div style={{
+        display: 'flex', flexWrap: 'wrap', gap: '0.5rem',
+        padding: '0.75rem 0', marginBottom: '0.5rem',
+      }}>
+        {TABS.map(t => {
+          const isActive = activeTab === t
+          return (
+            <button key={t} onClick={() => setActiveTab(t)} style={{
+              padding: '0.45rem 1.1rem',
+              borderRadius: '999px',
+              border: 'none',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.72rem',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              fontWeight: isActive ? 600 : 400,
+              color: isActive ? 'var(--cyan)' : 'var(--text-3)',
+              background: isActive
+                ? 'linear-gradient(145deg, #151a26, #1e2436)'
+                : 'linear-gradient(145deg, #1e2436, #151a26)',
+              boxShadow: isActive
+                ? 'inset 3px 3px 6px rgba(0,0,0,0.5), inset -2px -2px 5px rgba(255,255,255,0.04), 0 0 0 1px rgba(0,212,255,0.18)'
+                : '4px 4px 8px rgba(0,0,0,0.4), -2px -2px 6px rgba(255,255,255,0.04)',
+              transition: 'all 0.18s ease',
+              outline: 'none',
             }}>
-            {t}
-          </button>
-        ))}
+              {t}
+            </button>
+          )
+        })}
       </div>
 
       {activeTab === 'Estadísticas' && (
