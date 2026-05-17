@@ -9,8 +9,9 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 import asyncpg
+import httpx
 import redis.asyncio as aioredis
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
@@ -159,6 +160,11 @@ async def chat(body: ChatRequest):
         if summaries:
             long_context = "\n".join(f"- {s}" for s in summaries)
 
+    # Datos FHIR del paciente en tiempo real (todos los modos)
+    fhir_context = ""
+    if body.patient_id:
+        fhir_context = await _fetch_patient_context(body.patient_id)
+
     # Recuperación RAG
     rag_mode = body.rag_mode
     retrieved = retriever.retrieve(body.message, k=5, mode="naive" if rag_mode == "naive" else "hybrid")
@@ -168,11 +174,11 @@ async def chat(body: ChatRequest):
     llm = app.state.llm
 
     if llm is None:
-        answer = _fallback_response(body.message, rag_context, retrieved)
+        answer = _fallback_response(body.message, rag_context, retrieved, fhir_context)
     elif rag_mode == "agentic":
-        answer = await _agentic_response(llm, body.message, history, body.patient_id, rag_context, long_context)
+        answer = await _agentic_response(llm, body.message, history, body.patient_id, rag_context, long_context, fhir_context)
     else:
-        answer = await _standard_response(llm, body.message, history, rag_context, long_context)
+        answer = await _standard_response(llm, body.message, history, rag_context, long_context, fhir_context)
 
     answer = mask_pii(answer)
 
@@ -187,12 +193,15 @@ async def chat(body: ChatRequest):
     return ChatResponse(answer=answer, session_id=session_id, sources=sources, rag_mode=rag_mode)
 
 
-async def _standard_response(llm, message: str, history: list, rag_context: str, long_context: str) -> str:
+async def _standard_response(llm, message: str, history: list, rag_context: str, long_context: str,
+                              fhir_context: str = "") -> str:
     """Naive / Advanced RAG: LLM con contexto recuperado."""
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
     messages = [SystemMessage(content=SYSTEM_PROMPT)]
 
+    if fhir_context:
+        messages.append(SystemMessage(content=fhir_context))
     if long_context:
         messages.append(SystemMessage(content=f"Historial previo del paciente:\n{long_context}"))
     if rag_context:
@@ -214,25 +223,28 @@ async def _standard_response(llm, message: str, history: list, rag_context: str,
 
 
 async def _agentic_response(llm, message: str, history: list, patient_id: Optional[str],
-                             rag_context: str, long_context: str) -> str:
+                             rag_context: str, long_context: str, fhir_context: str = "") -> str:
     """Agentic RAG con tool calling nativo (compatible con Groq/OpenAI/Anthropic)."""
     from langchain.agents import AgentExecutor, create_tool_calling_agent
     from langchain_core.prompts import ChatPromptTemplate
 
+    patient_section = fhir_context if fhir_context else f"Paciente activo ID: {patient_id or 'no especificado'}"
+
     system = f"""Eres un asistente clínico especializado en diabetes y retinopatía diabética.
 Tienes acceso a herramientas reales — ÚSALAS para responder, no inventes datos.
 
-Paciente activo ID: {patient_id or 'no especificado'}
+{patient_section}
+
 Contexto RAG: {rag_context[:600] if rag_context else 'Sin contexto adicional'}
 {"Historial previo: " + long_context[:400] if long_context else ""}
 
-Reglas de uso de herramientas (OBLIGATORIAS):
-- "reporte", "riesgo", "resultado ML", "resultado DL", "predicción" → llama a query_risk_reports con patient_id="{patient_id or ''}"
-- "observaciones", "glucosa", "historial FHIR", "laboratorios" → llama a query_fhir con patient_id="{patient_id or ''}"
-- "predecir diabetes", "modelo ML", "XGBoost" → llama a invoke_ml_model
-- "retinopatía", "fondo de ojo", "modelo DL", "EfficientNet" → llama a invoke_dl_model
-- "crear reporte", "generar informe FHIR" → llama a create_fhir_report
-- preguntas clínicas generales sin datos de paciente → llama a search_clinical_docs
+Reglas de uso de herramientas:
+- Si necesitas datos adicionales del paciente o actualizarlos → query_fhir con patient_id="{patient_id or ''}"
+- "reporte", "riesgo", "resultado ML", "resultado DL", "predicción" → query_risk_reports con patient_id="{patient_id or ''}"
+- "predecir diabetes", "modelo ML", "XGBoost" → invoke_ml_model
+- "retinopatía", "fondo de ojo", "modelo DL", "EfficientNet" → invoke_dl_model
+- "crear reporte", "generar informe FHIR" → create_fhir_report
+- preguntas clínicas generales → search_clinical_docs
 - Responde siempre en español con lenguaje clínico preciso."""
 
     prompt = ChatPromptTemplate.from_messages([
@@ -248,19 +260,106 @@ Reglas de uso de herramientas (OBLIGATORIAS):
         result = await executor.ainvoke({"input": message})
         return result.get("output", "Sin respuesta del agente.")
     except Exception as e:
-        return await _standard_response(llm, message, history, rag_context, long_context)
+        return await _standard_response(llm, message, history, rag_context, long_context, fhir_context)
 
 
-def _fallback_response(message: str, rag_context: str, retrieved: list) -> str:
-    """Respuesta sin LLM configurado — solo recuperación RAG."""
+LOINC_DISPLAY = {
+    "2339-0":   "Glucosa",
+    "4548-4":   "HbA1c",
+    "55284-4":  "Presión arterial",
+    "8480-6":   "PA sistólica",
+    "8462-4":   "PA diastólica",
+    "39156-5":  "IMC",
+    "39106-0":  "Pliegue cutáneo",
+    "33914-3":  "TFGe (creatinina)",
+    "14749-6":  "Glucosa (ayunas)",
+    "11996-6":  "Insulina sérica",
+    "21612-7":  "Edad",
+}
+
+
+async def _fetch_patient_context(patient_id: str) -> str:
+    """Obtiene datos del paciente desde la BD local (PostgreSQL) e inyecta contexto clínico real."""
+    if _pg_pool is None:
+        return f"Paciente ID {patient_id} — BD no disponible."
+
+    parts = []
+    try:
+        async with _pg_pool.acquire() as conn:
+            # Datos demográficos
+            pat = await conn.fetchrow(
+                "SELECT name, birth_date, document_type FROM patients WHERE id=$1::uuid AND deleted_at IS NULL",
+                patient_id,
+            )
+            if pat is None:
+                return f"Paciente ID {patient_id} — No encontrado en el sistema."
+            parts.append(
+                f"Paciente: {pat['name']} | Tipo doc: {pat['document_type']} | "
+                f"Fecha nac.: {str(pat['birth_date'])}"
+            )
+
+            # Observaciones LOINC
+            obs_rows = await conn.fetch(
+                """SELECT loinc_code, value, unit, created_at
+                   FROM observations
+                   WHERE patient_id=$1::uuid AND deleted_at IS NULL
+                   ORDER BY created_at DESC LIMIT 20""",
+                patient_id,
+            )
+            if obs_rows:
+                obs_lines = []
+                for o in obs_rows:
+                    display = LOINC_DISPLAY.get(o["loinc_code"], o["loinc_code"])
+                    val = float(o["value"]) if o["value"] is not None else "?"
+                    date = str(o["created_at"])[:10]
+                    obs_lines.append(f"  - {display}: {val} {o['unit'] or ''} ({date})")
+                parts.append("Observaciones clínicas (LOINC):\n" + "\n".join(obs_lines))
+
+            # Reportes de riesgo ML/DL
+            risk_rows = await conn.fetch(
+                """SELECT model_type, risk_score, risk_category, is_critical,
+                          doctor_action, created_at
+                   FROM risk_reports
+                   WHERE patient_id=$1::uuid AND deleted_at IS NULL
+                   ORDER BY created_at DESC LIMIT 5""",
+                patient_id,
+            )
+            if risk_rows:
+                risk_lines = []
+                for r in risk_rows:
+                    critical = " ⚠ CRÍTICO" if r["is_critical"] else ""
+                    action = r["doctor_action"] or "Pendiente revisión"
+                    date = str(r["created_at"])[:10]
+                    risk_lines.append(
+                        f"  - [{date}] {r['model_type']}: score={float(r['risk_score']):.3f} | "
+                        f"{r['risk_category']}{critical} | Acción médico: {action}"
+                    )
+                parts.append("Reportes de riesgo clínico:\n" + "\n".join(risk_lines))
+
+    except Exception as e:
+        return f"Paciente ID {patient_id} — Error al obtener datos: {e}"
+
+    return f"=== DATOS CLÍNICOS DEL PACIENTE (ID: {patient_id}) ===\n" + "\n\n".join(parts)
+
+
+def _fallback_response(message: str, rag_context: str, retrieved: list, fhir_context: str = "") -> str:
+    """Respuesta sin LLM configurado — solo recuperación RAG + datos FHIR disponibles."""
+    sections = []
+    if fhir_context:
+        sections.append(fhir_context)
     if not retrieved:
-        return ("No hay LLM configurado. Configure GROQ_API_KEY o OPENAI_API_KEY en las variables de entorno. "
-                "Tampoco se encontró contexto relevante en la base de conocimiento.")
+        msg = "No hay LLM configurado. Configure GROQ_API_KEY o OPENAI_API_KEY en las variables de entorno."
+        if not fhir_context:
+            msg += " Tampoco se encontró contexto relevante en la base de conocimiento."
+        return msg if not sections else "\n\n".join(sections) + f"\n\n{msg}"
     top = retrieved[0]["text"][:800]
     source = retrieved[0]["source"]
-    return (f"[Sin LLM — respuesta basada en recuperación RAG]\n\n"
-            f"Contexto más relevante encontrado en '{source}':\n\n{top}\n\n"
-            f"Para respuestas generativas, configure un proveedor LLM.")
+    sections.append(
+        f"[Sin LLM — respuesta basada en recuperación RAG]\n\n"
+        f"Contexto más relevante encontrado en '{source}':\n\n{top}\n\n"
+        f"Para respuestas generativas, configure un proveedor LLM."
+    )
+    return "\n\n".join(sections)
 
 
 @app.delete("/agent/session/{session_id}", status_code=204)
@@ -283,4 +382,97 @@ async def index_status():
         "chunks": len(retriever._chunks),
         "has_faiss": retriever._index is not None,
         "has_bm25": retriever._bm25 is not None,
+    }
+
+
+_ragas_running = False
+
+
+@app.post("/agent/ragas/run", status_code=202)
+async def ragas_run(background_tasks: BackgroundTasks):
+    """Lanza la evaluación RAGAS en segundo plano. Puede tardar varios minutos."""
+    global _ragas_running
+    if _ragas_running:
+        raise HTTPException(status_code=409, detail="Evaluación RAGAS ya en curso.")
+    background_tasks.add_task(_run_ragas_eval)
+    return {"status": "started", "message": "Evaluación RAGAS iniciada. Consulte /agent/ragas/report cuando termine."}
+
+
+async def _run_ragas_eval():
+    """Ejecuta ragas_eval.py como subproceso y guarda ragas_report.json."""
+    global _ragas_running
+    import asyncio
+    _ragas_running = True
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python", "/app/ragas_eval.py",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            print(f"RAGAS eval error: {stderr.decode()[:500]}")
+        else:
+            print("RAGAS eval completado.")
+    except Exception as e:
+        print(f"Error lanzando RAGAS eval: {e}")
+    finally:
+        _ragas_running = False
+
+
+@app.get("/agent/ragas/status")
+async def ragas_status():
+    """Retorna si hay una evaluación RAGAS en curso."""
+    return {"running": _ragas_running}
+
+
+@app.get("/agent/ragas/report")
+async def ragas_report():
+    """Sirve el reporte RAGAS generado por ragas_eval.py."""
+    import json
+    from pathlib import Path
+
+    report_path = Path("/app/ragas_report.json")
+    if not report_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Reporte RAGAS no disponible. Ejecute la evaluación desde el botón o con python ragas_eval.py.",
+        )
+    with open(report_path) as f:
+        data = json.load(f)
+
+    thresholds = {
+        "faithfulness":      {"min": 0.75, "ideal": 0.85},
+        "answer_relevancy":  {"min": 0.70, "ideal": 0.80},
+        "context_precision": {"min": 0.65, "ideal": 0.75},
+        "context_recall":    {"min": 0.65, "ideal": 0.75},
+    }
+
+    # Soporte para formato de ragas_eval.py: {"metrics": {...}, "total_questions": N}
+    raw_metrics = data.get("metrics", data)
+    total = data.get("total_questions", 30)
+
+    def _safe_float(v, default=0.0) -> float:
+        """Convierte a float seguro para JSON (reemplaza NaN/Inf con default)."""
+        import math
+        try:
+            f = float(v)
+            return default if (math.isnan(f) or math.isinf(f)) else f
+        except (TypeError, ValueError):
+            return default
+
+    summary = {}
+    for m, thresh in thresholds.items():
+        score = _safe_float(raw_metrics.get(m, 0.0))
+        summary[m] = {
+            "score": round(score, 4),
+            "threshold": thresh,
+            "pass": score >= thresh["min"],
+        }
+
+    return {
+        "summary": summary,
+        "total_questions": total,
+        "penalization_risk": data.get("penalization_risk", summary["faithfulness"]["score"] < 0.75),
+        "running": _ragas_running,
     }

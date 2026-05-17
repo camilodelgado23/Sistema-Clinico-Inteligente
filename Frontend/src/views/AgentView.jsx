@@ -87,6 +87,86 @@ const SUGGESTED = [
   '¿Qué tratamiento se recomienda para RDNP moderada con EMD?',
 ]
 
+const RAGAS_LABELS = {
+  faithfulness:      { label: 'Faithfulness',      color: '#a78bfa', min: 0.75 },
+  answer_relevancy:  { label: 'Answer Relevancy',  color: '#38bdf8', min: 0.70 },
+  context_precision: { label: 'Context Precision', color: '#34d399', min: 0.65 },
+  context_recall:    { label: 'Context Recall',    color: '#fb923c', min: 0.65 },
+}
+
+function RagasPanel({ report, onRun, running }) {
+  const { summary, total_questions } = report || {}
+  return (
+    <div className="agent-sidebar-section">
+      <h4 style={{ color: 'var(--text-2)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        Evaluación RAGAS
+        {total_questions && (
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-4)', marginLeft: 'auto' }}>{total_questions}Q</span>
+        )}
+      </h4>
+
+      {summary ? (
+        <>
+          {Object.entries(RAGAS_LABELS).map(([key, meta]) => {
+            const m = summary?.[key]
+            if (!m) return null
+            const pct = Math.round(m.score * 100)
+            const pass = m.pass
+            return (
+              <div key={key} style={{ marginBottom: '0.6rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', marginBottom: '0.2rem' }}>
+                  <span style={{ color: 'var(--text-3)' }}>{meta.label}</span>
+                  <span style={{ color: pass ? meta.color : '#f87171', fontWeight: 600 }}>
+                    {m.score.toFixed(3)} {pass ? '✓' : '✗'}
+                  </span>
+                </div>
+                <div style={{ height: 5, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 3,
+                    width: `${pct}%`,
+                    background: pass ? meta.color : '#f87171',
+                    transition: 'width 0.6s ease',
+                  }} />
+                </div>
+                <div style={{ fontSize: '0.58rem', color: 'var(--text-4)', marginTop: '0.1rem' }}>
+                  mín. {meta.min}
+                </div>
+              </div>
+            )
+          })}
+          {summary?.faithfulness && !summary.faithfulness.pass && (
+            <div className="alert alert-warning" style={{ fontSize: '0.68rem', marginTop: '0.4rem' }}>
+              Faithfulness {'<'} 0.75 — penalización −10% activa
+            </div>
+          )}
+        </>
+      ) : (
+        <p style={{ fontSize: '0.7rem', color: 'var(--text-4)', marginBottom: '0.5rem' }}>
+          Sin reporte disponible. Ejecute la evaluación.
+        </p>
+      )}
+
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ width: '100%', marginTop: '0.4rem', fontSize: '0.68rem' }}
+        onClick={onRun}
+        disabled={running}
+      >
+        {running ? (
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'center' }}>
+            <div className="spinner" style={{ width: 10, height: 10 }} /> Evaluando…
+          </span>
+        ) : (
+          summary ? 'Re-evaluar RAGAS' : 'Ejecutar evaluación RAGAS'
+        )}
+      </button>
+    </div>
+  )
+}
+
 export default function AgentView() {
   const [messages, setMessages]     = useState([])
   const [input, setInput]           = useState('')
@@ -95,10 +175,13 @@ export default function AgentView() {
   const [patientId, setPatientId]   = useState('')
   const [ragMode, setRagMode]       = useState('hybrid')
   const [indexStatus, setIndexStatus] = useState(null)
+  const [ragasReport, setRagasReport] = useState(null)
+  const [ragasRunning, setRagasRunning] = useState(false)
   const [elapsed, setElapsed]       = useState(0)
-  const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
-  const timerRef  = useRef(null)
+  const bottomRef  = useRef(null)
+  const inputRef   = useRef(null)
+  const timerRef   = useRef(null)
+  const ragasPoll  = useRef(null)
 
   useEffect(() => {
     if (loading) {
@@ -116,7 +199,30 @@ export default function AgentView() {
 
   useEffect(() => {
     ragAPI.indexStatus().then(d => setIndexStatus(d)).catch(() => null)
+    ragAPI.ragasReport().then(d => setRagasReport(d)).catch(() => null)
   }, [])
+
+  const runRagas = async () => {
+    try {
+      await ragAPI.ragasRun()
+      setRagasRunning(true)
+      ragasPoll.current = setInterval(async () => {
+        try {
+          const st = await ragAPI.ragasStatus()
+          if (!st.running) {
+            clearInterval(ragasPoll.current)
+            setRagasRunning(false)
+            const rep = await ragAPI.ragasReport()
+            setRagasReport(rep)
+          }
+        } catch {}
+      }, 8000)
+    } catch (e) {
+      if (e.response?.status === 409) alert('Ya hay una evaluación en curso.')
+    }
+  }
+
+  useEffect(() => () => clearInterval(ragasPoll.current), [])
 
   const sendMessage = async (text) => {
     const content = (text || input).trim()
@@ -222,6 +328,8 @@ export default function AgentView() {
             </button>
           </div>
         )}
+
+        <RagasPanel report={ragasReport} onRun={runRagas} running={ragasRunning} />
 
         <div className="agent-sidebar-section">
           <div className="alert alert-warning" style={{fontSize:'0.72rem'}}>

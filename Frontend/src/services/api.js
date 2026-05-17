@@ -200,6 +200,12 @@ export const ragAPI = {
     ragAxios.get('/agent/index/status').then(r => r.data),
   rebuildIndex: () =>
     ragAxios.post('/agent/index/rebuild').then(r => r.data),
+  ragasReport: () =>
+    ragAxios.get('/agent/ragas/report').then(r => r.data),
+  ragasRun: () =>
+    ragAxios.post('/agent/ragas/run').then(r => r.data),
+  ragasStatus: () =>
+    ragAxios.get('/agent/ragas/status').then(r => r.data),
 }
 
 // ── SuperUser API ─────────────────────────────────────────────────────────────

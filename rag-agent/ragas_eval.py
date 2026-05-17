@@ -120,6 +120,45 @@ async def collect_eval_data():
     })
 
 
+def _safe_float(v, default=0.0) -> float:
+    """Convierte a float seguro para JSON — reemplaza NaN/Inf."""
+    import math
+    try:
+        f = float(v)
+        return default if (math.isnan(f) or math.isinf(f)) else f
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_ragas_llm():
+    """Construye el LLM evaluador para RAGAS según variables de entorno disponibles."""
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+
+    if openai_key:
+        from langchain_openai import ChatOpenAI
+        print("  LLM evaluador: OpenAI")
+        return ChatOpenAI(api_key=openai_key, model="gpt-4o-mini", temperature=0)
+    if groq_key:
+        from langchain_groq import ChatGroq
+        print("  LLM evaluador: Groq (llama-3.1-8b-instant)")
+        return ChatGroq(api_key=groq_key, model="llama-3.1-8b-instant", temperature=0)
+    if anthropic_key:
+        from langchain_anthropic import ChatAnthropic
+        print("  LLM evaluador: Anthropic (claude-haiku-4-5-20251001)")
+        return ChatAnthropic(api_key=anthropic_key, model="claude-haiku-4-5-20251001", temperature=0)
+    # Fallback: Ollama
+    try:
+        from langchain_ollama import ChatOllama
+        model = os.getenv("LLM_MODEL", "phi3:mini")
+        print(f"  LLM evaluador: Ollama ({model})")
+        return ChatOllama(base_url=ollama_url, model=model, temperature=0)
+    except Exception:
+        return None
+
+
 def run_ragas_evaluation(dataset: Dataset) -> dict:
     """Ejecuta la evaluación RAGAS sobre el dataset."""
     try:
@@ -130,6 +169,13 @@ def run_ragas_evaluation(dataset: Dataset) -> dict:
             context_precision,
             context_recall,
         )
+        from ragas.llms import LangchainLLM
+
+        llm = _build_ragas_llm()
+        if llm:
+            lc_llm = LangchainLLM(llm)
+            for metric in [faithfulness, answer_relevancy, context_precision, context_recall]:
+                metric.llm = lc_llm
 
         print("\nEjecutando evaluación RAGAS…")
         result = evaluate(
@@ -159,10 +205,10 @@ async def main():
 
     if result is not None:
         result_dict = {
-            "faithfulness":      float(result["faithfulness"]),
-            "answer_relevancy":  float(result["answer_relevancy"]),
-            "context_precision": float(result["context_precision"]),
-            "context_recall":    float(result["context_recall"]),
+            "faithfulness":      _safe_float(result["faithfulness"]),
+            "answer_relevancy":  _safe_float(result["answer_relevancy"]),
+            "context_precision": _safe_float(result["context_precision"]),
+            "context_recall":    _safe_float(result["context_recall"]),
         }
     else:
         # Métricas simuladas si RAGAS no está disponible
