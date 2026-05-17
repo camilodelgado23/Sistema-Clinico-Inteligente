@@ -1,6 +1,38 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { ragAPI } from '../services/api'
 import './AgentView.css'
+
+function renderMarkdown(text) {
+  if (!text) return ''
+  const lines = text.split('\n')
+  let html = ''
+  let inList = false
+
+  for (let line of lines) {
+    const listMatch = line.match(/^(\s*[-*]|\s*\d+\.)\s+(.*)/)
+    if (listMatch) {
+      if (!inList) { html += '<ul style="margin:0.4rem 0 0.4rem 1.2rem;padding:0">'; inList = true }
+      html += `<li>${formatInline(listMatch[2])}</li>`
+    } else {
+      if (inList) { html += '</ul>'; inList = false }
+      if (line.trim() === '') {
+        html += '<br>'
+      } else {
+        html += `<p style="margin:0.2rem 0">${formatInline(line)}</p>`
+      }
+    }
+  }
+  if (inList) html += '</ul>'
+  return html
+}
+
+function formatInline(text) {
+  return text
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code style="background:rgba(255,255,255,0.08);padding:0.1em 0.3em;border-radius:3px;font-size:0.85em">$1</code>')
+}
 
 const RAG_MODES = [
   { value: 'hybrid',  label: 'Hybrid RAG',   desc: 'BM25 + Dense (recomendado)' },
@@ -21,7 +53,7 @@ function Message({ msg }) {
         )}
       </div>
       <div className="msg-content">
-        <div className="msg-text">{msg.content}</div>
+        <div className="msg-text" dangerouslySetInnerHTML={{ __html: isUser ? msg.content : renderMarkdown(msg.content) }} />
         {msg.sources?.length > 0 && (
           <div className="msg-sources">
             <span className="sources-label">Fuentes RAG:</span>
@@ -31,10 +63,15 @@ function Message({ msg }) {
           </div>
         )}
         {msg.rag_mode && (
-          <div className="msg-meta">
+          <div className="msg-meta" style={{display:'flex',gap:'0.4rem',alignItems:'center'}}>
             <span className="badge badge-purple" style={{fontSize:'0.6rem'}}>
               {RAG_MODES.find(m => m.value === msg.rag_mode)?.label || msg.rag_mode}
             </span>
+            {msg.elapsed != null && (
+              <span style={{fontSize:'0.6rem',color:'var(--text-4)'}}>
+                {(msg.elapsed / 1000).toFixed(1)}s
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -58,8 +95,20 @@ export default function AgentView() {
   const [patientId, setPatientId]   = useState('')
   const [ragMode, setRagMode]       = useState('hybrid')
   const [indexStatus, setIndexStatus] = useState(null)
+  const [elapsed, setElapsed]       = useState(0)
   const bottomRef = useRef(null)
   const inputRef  = useRef(null)
+  const timerRef  = useRef(null)
+
+  useEffect(() => {
+    if (loading) {
+      setElapsed(0)
+      timerRef.current = setInterval(() => setElapsed(s => s + 100), 100)
+    } else {
+      clearInterval(timerRef.current)
+    }
+    return () => clearInterval(timerRef.current)
+  }, [loading])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -86,6 +135,7 @@ export default function AgentView() {
         content: data.answer,
         sources: data.sources,
         rag_mode: data.rag_mode,
+        elapsed,
       }])
     } catch (e) {
       setMessages(prev => [...prev, {
@@ -225,7 +275,12 @@ export default function AgentView() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/></svg>
               </div>
               <div className="msg-content">
-                <div className="typing-dots"><span/><span/><span/></div>
+                <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+                  <div className="typing-dots"><span/><span/><span/></div>
+                  <span style={{fontSize:'0.7rem',color:'var(--text-4)',fontVariantNumeric:'tabular-nums'}}>
+                    {(elapsed / 1000).toFixed(1)}s
+                  </span>
+                </div>
               </div>
             </div>
           )}

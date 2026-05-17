@@ -27,6 +27,9 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
 
+        {/* Ruta pública — médico externo no necesita cuenta interna */}
+        <Route path="/superuser" element={<SuperUserView />} />
+
         <Route path="/" element={
           !normalizedRole ? <Navigate to="/login" replace />
           : normalizedRole === 'PACIENTE' ? <Navigate to="/my-profile" replace />
@@ -46,10 +49,6 @@ export default function App() {
 
           <Route path="/agent" element={
             <PrivateRoute roles={['MEDICO','ADMIN']}><AgentView /></PrivateRoute>
-          } />
-
-          <Route path="/superuser" element={
-            <PrivateRoute roles={['MEDICO','ADMIN']}><SuperUserView /></PrivateRoute>
           } />
 
           <Route path="/admin" element={

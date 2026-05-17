@@ -1476,6 +1476,192 @@ function ArcoSection() {
   )
 }
 
+// ── Sección Médicos Externos (Practitioners) ──────────────────────────────────
+function PractitionersSection() {
+  const [practitioners, setPractitioners] = useState([])
+  const [total,         setTotal]         = useState(0)
+  const [loading,       setLoading]       = useState(true)
+  const [showCreate,    setShowCreate]    = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data } = await adminAPI.listPractitioners({ limit: 50, offset: 0 })
+      setPractitioners(data.entry || [])
+      setTotal(data.total)
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const toggle = async (p) => {
+    try {
+      await adminAPI.togglePractitioner(p.id)
+      load()
+    } catch (e) { alert(e.response?.data?.detail || 'Error') }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      {showCreate && <CreatePractitionerModal onClose={() => setShowCreate(false)} onCreated={load} />}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h3 style={{ margin: '0 0 0.25rem' }}>Médicos Externos ({total})</h3>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+            Practitioners con acceso SuperUser via JWT propio · FHIR R4 interoperabilidad
+          </p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+          + Registrar médico externo
+        </button>
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th><th>Email</th><th>Licencia</th>
+                <th>Especialidad</th><th>Estado</th><th>Registro</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>Cargando…</td></tr>
+              ) : practitioners.length === 0 ? (
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-tertiary)' }}>
+                  No hay médicos externos registrados. Usa el botón para crear uno.
+                </td></tr>
+              ) : practitioners.map(p => (
+                <tr key={p.id}>
+                  <td style={{ fontWeight: 600 }}>{p.full_name}</td>
+                  <td style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{p.email}</td>
+                  <td>
+                    <code style={{ fontSize: '0.75rem', color: 'var(--cyan)', background: 'rgba(56,189,248,0.08)',
+                      padding: '0.15rem 0.4rem', borderRadius: '4px' }}>{p.license_number}</code>
+                  </td>
+                  <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{p.specialty || '—'}</td>
+                  <td>
+                    <span className={`badge ${p.is_active ? 'badge-success' : 'badge-warning'}`}>
+                      {p.is_active ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
+                    {new Date(p.created_at).toLocaleDateString('es-CO')}
+                  </td>
+                  <td>
+                    <button className="btn btn-ghost btn-sm"
+                      style={{ color: p.is_active ? 'var(--danger)' : 'var(--success)' }}
+                      onClick={() => toggle(p)}
+                      title={p.is_active ? 'Desactivar acceso' : 'Activar acceso'}>
+                      {p.is_active ? '⏸ Desactivar' : '▶ Activar'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CreatePractitionerModal({ onClose, onCreated }) {
+  const [form,    setForm]    = useState({ full_name: '', email: '', password: '', license_number: '', specialty: '' })
+  const [saving,  setSaving]  = useState(false)
+  const [result,  setResult]  = useState(null)
+  const [error,   setError]   = useState('')
+
+  const submit = async () => {
+    if (!form.full_name.trim() || !form.email.trim() || !form.password || !form.license_number.trim()) {
+      setError('Todos los campos obligatorios deben completarse')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const { data } = await adminAPI.createPractitioner(form)
+      setResult(data)
+      onCreated?.()
+    } catch (e) {
+      const detail = e.response?.data?.detail
+      setError(typeof detail === 'string' ? detail : 'Error al registrar médico')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <div className="modal-header">
+          <h3>Registrar Médico Externo</h3>
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+
+        {result ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ color: 'var(--success)', fontWeight: 600 }}>✅ Médico externo registrado</div>
+            <div style={{ background: 'var(--surface-2)', borderRadius: 'var(--radius-sm)',
+              padding: '1rem', fontSize: '0.85rem', lineHeight: 1.8 }}>
+              <div><strong>Nombre:</strong> {result.full_name}</div>
+              <div><strong>Email:</strong> {result.email}</div>
+              <div><strong>Licencia:</strong> {result.license_number}</div>
+              <div style={{ marginTop: '0.5rem', color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                El médico puede acceder desde <code>localhost/superuser</code> con esas credenciales.
+              </div>
+            </div>
+            <button className="btn btn-primary" onClick={onClose}>Cerrar</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div>
+              <label className="form-label">Nombre completo *</label>
+              <input className="input" placeholder="Dr. Juan García" value={form.full_name}
+                onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label">Email *</label>
+              <input className="input" type="email" placeholder="medico@hospital.com" value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label">Contraseña *</label>
+              <input className="input" type="password" placeholder="Contraseña segura" value={form.password}
+                onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label">Número de licencia médica *</label>
+              <input className="input" placeholder="REG-12345" value={form.license_number}
+                onChange={e => setForm(f => ({ ...f, license_number: e.target.value }))} />
+            </div>
+            <div>
+              <label className="form-label">Especialidad</label>
+              <input className="input" placeholder="Diabetología (opcional)" value={form.specialty}
+                onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))} />
+            </div>
+            {error && (
+              <div style={{ color: 'var(--danger)', fontSize: '0.85rem',
+                background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.3)',
+                borderRadius: 'var(--radius-sm)', padding: '0.5rem 0.75rem' }}>
+                ⚠️ {error}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={submit}
+                disabled={saving || !form.full_name || !form.email || !form.password || !form.license_number}>
+                {saving ? 'Registrando…' : 'Registrar médico'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main AdminPanel ───────────────────────────────────────────────────────────
 export default function AdminPanel() {
   const [stats,           setStats]           = useState(null)
@@ -1485,7 +1671,7 @@ export default function AdminPanel() {
   const [alertsDismissed, setAlertsDismissed] = useState(false)
   const [showThresholds,  setShowThresholds]  = useState(false)
 
-  const TABS = ['Estadísticas', 'Usuarios', 'Asignaciones', 'Audit Log', 'ARCO']
+  const TABS = ['Estadísticas', 'Usuarios', 'Asignaciones', 'Médicos Ext.', 'Audit Log', 'ARCO']
 
   const loadStats = useCallback(async () => {
     try {
@@ -1601,10 +1787,11 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {activeTab === 'Usuarios'     && <UsersSection />}
-      {activeTab === 'Asignaciones' && <AssignmentsSection />}
-      {activeTab === 'Audit Log'    && <AuditSection />}
-      {activeTab === 'ARCO'         && <ArcoSection />}
+      {activeTab === 'Usuarios'      && <UsersSection />}
+      {activeTab === 'Asignaciones'  && <AssignmentsSection />}
+      {activeTab === 'Médicos Ext.'  && <PractitionersSection />}
+      {activeTab === 'Audit Log'     && <AuditSection />}
+      {activeTab === 'ARCO'          && <ArcoSection />}
     </div>
   )
 }

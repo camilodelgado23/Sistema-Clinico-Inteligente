@@ -148,6 +148,10 @@ export const adminAPI = {
   }),
 
   migratePatientUsers: () => api.post('/admin/migrate-patients-to-users'),
+
+  listPractitioners:   (params) => api.get('/admin/practitioners', { params }),
+  createPractitioner:  (body)   => api.post('/admin/practitioners', body),
+  togglePractitioner:  (pid)    => api.patch(`/admin/practitioners/${pid}`),
 }
 
 // ── Assignment API ────────────────────────────────────────────────────────────

@@ -18,17 +18,18 @@ from pydantic_settings import BaseSettings
 from core.injection import mask_pii, sanitize_input
 from core.memory import LongTermMemory, ShortTermMemory
 from core.retriever import retriever
-from core.tools import AGENT_TOOLS
+from core.tools import AGENT_TOOLS, set_db_pool
 
 
 class Settings(BaseSettings):
     DATABASE_URL: str = ""
     REDIS_URL: str = "redis://redis:6379/0"
-    LLM_PROVIDER: str = "groq"
+    LLM_PROVIDER: str = "ollama"
     GROQ_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
-    LLM_MODEL: str = "llama-3.3-70b-versatile"
+    OLLAMA_BASE_URL: str = "http://ollama:11434"
+    LLM_MODEL: str = "phi3:mini"
     FHIR_SERVER_URL: str = "http://fhir-server:8080/fhir"
     ML_SERVICE_URL: str = "http://ml-service:8001"
     DL_SERVICE_URL: str = "http://dl-service:8002"
@@ -47,7 +48,10 @@ _long_mem: Optional[LongTermMemory] = None
 
 def _build_llm():
     """Construye el LLM según el proveedor configurado."""
-    if settings.LLM_PROVIDER == "groq" and settings.GROQ_API_KEY:
+    if settings.LLM_PROVIDER == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(base_url=settings.OLLAMA_BASE_URL, model=settings.LLM_MODEL, temperature=0.2)
+    elif settings.LLM_PROVIDER == "groq" and settings.GROQ_API_KEY:
         from langchain_groq import ChatGroq
         return ChatGroq(api_key=settings.GROQ_API_KEY, model=settings.LLM_MODEL, temperature=0.2)
     elif settings.LLM_PROVIDER == "openai" and settings.OPENAI_API_KEY:
@@ -70,6 +74,7 @@ async def lifespan(app: FastAPI):
         try:
             _pg_pool = await asyncpg.create_pool(settings.DATABASE_URL, min_size=1, max_size=5)
             _long_mem = LongTermMemory(_pg_pool)
+            set_db_pool(_pg_pool)
             print("✅ PostgreSQL pool listo")
         except Exception as e:
             print(f"⚠ PostgreSQL no disponible: {e}")
@@ -150,7 +155,7 @@ async def chat(body: ChatRequest):
 
     long_context = ""
     if _long_mem and body.patient_id:
-        summaries = await _long_mem.get_summaries(body.patient_id)
+        summaries = await _long_mem.get_summaries(body.patient_id, query=body.message)
         if summaries:
             long_context = "\n".join(f"- {s}" for s in summaries)
 
@@ -210,40 +215,37 @@ async def _standard_response(llm, message: str, history: list, rag_context: str,
 
 async def _agentic_response(llm, message: str, history: list, patient_id: Optional[str],
                              rag_context: str, long_context: str) -> str:
-    """Agentic RAG con ReAct + tool calling."""
-    from langchain.agents import AgentExecutor, create_react_agent
-    from langchain_core.prompts import PromptTemplate
+    """Agentic RAG con tool calling nativo (compatible con Groq/OpenAI/Anthropic)."""
+    from langchain.agents import AgentExecutor, create_tool_calling_agent
+    from langchain_core.prompts import ChatPromptTemplate
 
-    react_prompt = PromptTemplate.from_template("""Eres un asistente clínico con acceso a herramientas.
+    system = f"""Eres un asistente clínico especializado en diabetes y retinopatía diabética.
+Tienes acceso a herramientas reales — ÚSALAS para responder, no inventes datos.
 
-Herramientas disponibles:
-{tools}
+Paciente activo ID: {patient_id or 'no especificado'}
+Contexto RAG: {rag_context[:600] if rag_context else 'Sin contexto adicional'}
+{"Historial previo: " + long_context[:400] if long_context else ""}
 
-Nombres de herramientas: {tool_names}
+Reglas de uso de herramientas (OBLIGATORIAS):
+- "reporte", "riesgo", "resultado ML", "resultado DL", "predicción" → llama a query_risk_reports con patient_id="{patient_id or ''}"
+- "observaciones", "glucosa", "historial FHIR", "laboratorios" → llama a query_fhir con patient_id="{patient_id or ''}"
+- "predecir diabetes", "modelo ML", "XGBoost" → llama a invoke_ml_model
+- "retinopatía", "fondo de ojo", "modelo DL", "EfficientNet" → llama a invoke_dl_model
+- "crear reporte", "generar informe FHIR" → llama a create_fhir_report
+- preguntas clínicas generales sin datos de paciente → llama a search_clinical_docs
+- Responde siempre en español con lenguaje clínico preciso."""
 
-Contexto RAG: {rag_context}
-Paciente ID: {patient_id}
-
-Usa el formato:
-Thought: [tu razonamiento]
-Action: [nombre de herramienta]
-Action Input: [input para la herramienta]
-Observation: [resultado]
-... (repite si necesario)
-Final Answer: [respuesta final en español para el médico]
-
-Pregunta: {input}
-{agent_scratchpad}""")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system),
+        ("human", "{input}"),
+        ("placeholder", "{agent_scratchpad}"),
+    ])
 
     try:
-        agent = create_react_agent(llm, AGENT_TOOLS, react_prompt)
-        executor = AgentExecutor(agent=agent, tools=AGENT_TOOLS, verbose=False, max_iterations=4,
-                                  handle_parsing_errors=True)
-        result = await executor.ainvoke({
-            "input": message,
-            "rag_context": rag_context[:800] if rag_context else "Sin contexto adicional",
-            "patient_id": patient_id or "no_especificado",
-        })
+        agent = create_tool_calling_agent(llm, AGENT_TOOLS, prompt)
+        executor = AgentExecutor(agent=agent, tools=AGENT_TOOLS, verbose=False,
+                                  max_iterations=6, handle_parsing_errors=True)
+        result = await executor.ainvoke({"input": message})
         return result.get("output", "Sin respuesta del agente.")
     except Exception as e:
         return await _standard_response(llm, message, history, rag_context, long_context)

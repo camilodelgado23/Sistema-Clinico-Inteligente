@@ -669,3 +669,106 @@ def _validate_password(password: str):
         raise HTTPException(400, "Contraseña debe tener al menos un número")
     if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
         raise HTTPException(400, "Contraseña debe tener al menos un símbolo")
+
+
+# ── Médicos Externos (Practitioners / SuperUser) ──────────────────────────────
+
+class CreatePractitionerAdminRequest(BaseModel):
+    email: str
+    password: str
+    license_number: str
+    full_name: str
+    specialty: Optional[str] = None
+
+
+@router.get("/practitioners")
+async def list_practitioners(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(require_admin),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """Lista todos los médicos externos (practitioners) registrados."""
+    rows = await db.fetch(
+        """SELECT id, email, license_number, full_name, specialty, is_active, created_at
+           FROM practitioners
+           ORDER BY created_at DESC
+           LIMIT $1 OFFSET $2""",
+        limit, offset,
+    )
+    total = await db.fetchval("SELECT COUNT(*) FROM practitioners")
+    return {
+        "total": total,
+        "entry": [
+            {
+                "id": str(r["id"]),
+                "email": r["email"],
+                "license_number": r["license_number"],
+                "full_name": r["full_name"],
+                "specialty": r["specialty"],
+                "is_active": r["is_active"],
+                "created_at": r["created_at"].isoformat(),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/practitioners", status_code=201)
+async def create_practitioner(
+    body: CreatePractitionerAdminRequest,
+    request: Request,
+    user: dict = Depends(require_admin),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """Crea un nuevo médico externo (SuperUser). Solo accesible para administradores."""
+    existing = await db.fetchrow(
+        "SELECT id FROM practitioners WHERE email = $1 OR license_number = $2",
+        body.email, body.license_number,
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Email o número de licencia ya registrado")
+
+    import bcrypt
+    pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt(rounds=12)).decode()
+    row = await db.fetchrow(
+        """INSERT INTO practitioners (email, password_hash, license_number, full_name, specialty)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING id, created_at""",
+        body.email, pw_hash, body.license_number, body.full_name, body.specialty,
+    )
+    await log_audit(db, str(user["id"]), user["role"], "CREATE_PRACTITIONER", "Practitioner",
+                    row["id"], request.client.host if request.client else None,
+                    detail={"email": body.email, "license": body.license_number})
+    return {
+        "id": str(row["id"]),
+        "email": body.email,
+        "full_name": body.full_name,
+        "license_number": body.license_number,
+        "created_at": row["created_at"].isoformat(),
+    }
+
+
+@router.patch("/practitioners/{pid}")
+async def toggle_practitioner(
+    pid: str,
+    request: Request,
+    user: dict = Depends(require_admin),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """Activa o desactiva un médico externo."""
+    row = await db.fetchrow(
+        "SELECT id, is_active, email FROM practitioners WHERE id = $1::uuid", pid,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Practitioner no encontrado")
+    new_status = not row["is_active"]
+    await db.execute(
+        "UPDATE practitioners SET is_active = $1 WHERE id = $2::uuid", new_status, pid,
+    )
+    await log_audit(db, str(user["id"]), user["role"],
+                    "ACTIVATE_PRACTITIONER" if new_status else "DEACTIVATE_PRACTITIONER",
+                    "Practitioner", row["id"],
+                    request.client.host if request.client else None,
+                    detail={"email": row["email"]})
+    return {"id": pid, "is_active": new_status}

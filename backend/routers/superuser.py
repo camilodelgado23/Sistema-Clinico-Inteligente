@@ -16,6 +16,7 @@ from jose import jwt, JWTError
 from pydantic import BaseModel
 
 from core.audit import log_audit
+from core.auth import require_admin
 from core.config import get_db, settings
 
 router = APIRouter(prefix="/api/v1", tags=["superuser"])
@@ -113,8 +114,9 @@ async def superuser_login(
 async def register_practitioner(
     body: CreatePractitionerRequest,
     db: asyncpg.Connection = Depends(get_db),
+    _admin: dict = Depends(require_admin),
 ):
-    """Registro de médico SuperUser (solo para setup inicial o admin)."""
+    """Registro de médico SuperUser. Requiere rol ADMIN del sistema."""
     existing = await db.fetchrow(
         "SELECT id FROM practitioners WHERE email = $1 OR license_number = $2",
         body.email, body.license_number,
@@ -137,27 +139,38 @@ async def search_patients(
     practitioner: dict = Depends(require_superuser),
     db: asyncpg.Connection = Depends(get_db),
 ):
-    """Buscar paciente por documento (formato: CC|1234567890)."""
-    parts = identifier.split("|", 1)
-    if len(parts) != 2:
-        raise HTTPException(status_code=400, detail="Formato: {doc_type}|{doc_number}")
+    """Buscar paciente por nombre o fragmento.
+    identifier puede ser: nombre libre, o con prefijo CC|nombre / TI|nombre.
+    identification_doc está cifrado (BYTEA) — la búsqueda es por nombre.
+    """
+    # Extraer el término de búsqueda: ignorar el prefijo doc_type si lo hay
+    if "|" in identifier:
+        search_term = identifier.split("|", 1)[1].strip()
+    else:
+        search_term = identifier.strip()
+
+    if not search_term:
+        raise HTTPException(status_code=400, detail="Ingresa un nombre o número de documento para buscar")
 
     rows = await db.fetch(
         """SELECT id, name, birth_date, fhir_id, created_at
            FROM patients
            WHERE deleted_at IS NULL
-           ORDER BY created_at DESC LIMIT 50""",
+             AND name ILIKE $1
+           ORDER BY created_at DESC LIMIT 20""",
+        f"%{search_term}%",
     )
 
-    entries = []
-    for r in rows:
-        entries.append({
+    entries = [
+        {
             "resourceType": "Patient",
             "id": str(r["id"]),
             "name": [{"text": r["name"]}],
             "birthDate": r["birth_date"].isoformat() if r["birth_date"] else None,
             "fhir_id": r["fhir_id"],
-        })
+        }
+        for r in rows
+    ]
 
     return {
         "resourceType": "Bundle",
@@ -298,31 +311,65 @@ async def superuser_inference(
     request: Request,
     practitioner: dict = Depends(require_superuser),
 ):
-    """Invocar inferencia ML/DL sobre datos de paciente externo."""
+    """Invocar inferencia ML/DL directamente sobre features del paciente externo.
+    model_type: diabetes → ML service | retinopathy → DL service | multimodal → ambos
+    """
     if model_type not in ("diabetes", "retinopathy", "multimodal"):
         raise HTTPException(status_code=400, detail="model_type: diabetes|retinopathy|multimodal")
 
     body = await request.json()
-    target_url = settings.ORCHESTRATOR_URL + "/infer"
-    payload = {**body, "requested_by": str(practitioner["id"]), "source": "superuser"}
+    features = body.get("features", {})
+    patient_id = body.get("patient_id")
 
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post(target_url, json=payload)
+        if model_type in ("diabetes", "multimodal"):
+            ml_payload = {"features": features}
+            if patient_id:
+                ml_payload["patient_id"] = patient_id
+            r_ml = await client.post(f"{settings.ML_SERVICE_URL}/ml/predict", json=ml_payload)
+            if r_ml.status_code >= 400:
+                raise HTTPException(status_code=502, detail=f"Error ML service: {r_ml.text[:200]}")
+            ml_result = r_ml.json()
+        else:
+            ml_result = None
 
-    if r.status_code >= 400:
-        raise HTTPException(status_code=502, detail="Error invocando orquestador")
+        if model_type in ("retinopathy", "multimodal") and patient_id:
+            r_dl = await client.post(f"{settings.DL_SERVICE_URL}/dl/predict", params={"patient_id": patient_id})
+            dl_result = r_dl.json() if r_dl.status_code == 200 else None
+        else:
+            dl_result = None
 
-    result = r.json()
+    if model_type == "diabetes":
+        probability = ml_result.get("risk_score", 0)
+        risk_category = ml_result.get("risk_category", "")
+        shap = ml_result.get("shap_values", {})
+    elif model_type == "retinopathy" and dl_result:
+        probability = max(dl_result.get("probabilities", {}).values() or [0])
+        risk_category = dl_result.get("risk_category", "")
+        shap = {}
+    elif model_type == "multimodal":
+        ml_score = ml_result.get("risk_score", 0) if ml_result else 0
+        dl_score = max(dl_result.get("probabilities", {}).values() or [0]) if dl_result else 0
+        probability = round((ml_score + dl_score) / (2 if dl_result else 1), 4)
+        risk_category = ml_result.get("risk_category", "") if ml_result else ""
+        shap = ml_result.get("shap_values", {}) if ml_result else {}
+    else:
+        probability = 0
+        risk_category = "UNKNOWN"
+        shap = {}
+
     return {
-        "prediction": result.get("prediction"),
-        "probability": result.get("probability"),
+        "probability": probability,
+        "risk_score": probability,
+        "risk_category": risk_category,
         "calibrated": True,
         "model": model_type,
+        "shap_values": shap,
         "fhir_risk_assessment": {
             "resourceType": "RiskAssessment",
             "status": "final",
-            "subject": body.get("patient_fhir", {}).get("reference", ""),
-            "prediction": [{"probabilityDecimal": result.get("probability", 0)}],
+            "subject": {"reference": f"Patient/{patient_id}"} if patient_id else {},
+            "prediction": [{"probabilityDecimal": probability, "qualitativeRisk": {"text": risk_category}}],
         },
     }
 

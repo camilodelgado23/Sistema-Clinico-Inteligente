@@ -13,6 +13,12 @@ ML_URL = os.getenv("ML_SERVICE_URL", "http://ml-service:8001")
 DL_URL = os.getenv("DL_SERVICE_URL", "http://dl-service:8002")
 FHIR_URL = os.getenv("FHIR_SERVER_URL", "http://fhir-server:8080/fhir")
 
+_db_pool = None
+
+def set_db_pool(pool):
+    global _db_pool
+    _db_pool = pool
+
 _HTTP_TIMEOUT = 15
 
 
@@ -74,16 +80,37 @@ async def invoke_ml_model(features_json: str) -> str:
 
 
 @tool
-async def invoke_dl_model(image_description: str) -> str:
+async def invoke_dl_model(patient_id: str) -> str:
     """
-    Consulta el modelo DL de retinopatía diabética (EfficientNet ONNX).
-    No envía la imagen directamente; retorna información del último análisis disponible.
+    Invoca el modelo DL de retinopatía diabética (EfficientNet-B0 ONNX) para el paciente.
+    Recupera la última imagen de fondo de ojo almacenada y retorna la clasificación APTOS 2019
+    con probabilidades por clase y nivel de riesgo.
+    Parámetro: patient_id (UUID del paciente).
     """
-    return (
-        "El modelo DL de retinopatía analiza imágenes de fondo de ojo. "
-        "Para procesar una imagen nueva, use el endpoint /infer con model_type=DL desde la interfaz clínica. "
-        f"Descripción solicitada: {image_description}"
-    )
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        try:
+            r = await client.post(f"{DL_URL}/dl/predict", params={"patient_id": patient_id})
+            if r.status_code == 200:
+                data = r.json()
+                cls_name = data.get("class_name", "?")
+                risk_cat = data.get("risk_category", "?")
+                probs = data.get("probabilities", {})
+                elapsed = data.get("elapsed_ms", "?")
+                top_probs = ", ".join(
+                    f"{k}: {v:.2%}" for k, v in sorted(probs.items(), key=lambda x: -x[1])[:3]
+                )
+                return (
+                    f"Retinopatía diabética: {cls_name} | Riesgo: {risk_cat} | "
+                    f"Top probabilidades: {top_probs} | Latencia: {elapsed}ms"
+                )
+            elif r.status_code == 404:
+                return (
+                    "Sin imagen de fondo de ojo registrada para este paciente. "
+                    "El médico debe cargar una imagen retiniana antes de ejecutar el modelo DL."
+                )
+            return f"DL service error {r.status_code}: {r.text[:200]}"
+        except Exception as e:
+            return f"No se pudo conectar al servicio DL: {e}"
 
 
 @tool
@@ -129,4 +156,39 @@ def search_clinical_docs(query: str) -> str:
     return "\n\n".join(f"[{r['source']}] {r['text'][:400]}" for r in results)
 
 
-AGENT_TOOLS = [query_fhir, invoke_ml_model, invoke_dl_model, create_fhir_report, search_clinical_docs]
+@tool
+async def query_risk_reports(patient_id: str) -> str:
+    """
+    Consulta los reportes de riesgo clínico del paciente almacenados en el sistema local.
+    Retorna el historial de predicciones ML/DL con categoría de riesgo y score.
+    Parámetro: patient_id (UUID del paciente).
+    """
+    if _db_pool is None:
+        return "Base de datos no disponible para consultar reportes."
+    try:
+        async with _db_pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT model_type, risk_score, risk_category, is_critical,
+                          doctor_action, doctor_notes, created_at
+                   FROM risk_reports
+                   WHERE patient_id = $1::uuid AND deleted_at IS NULL
+                   ORDER BY created_at DESC LIMIT 5""",
+                patient_id,
+            )
+        if not rows:
+            return "No hay reportes de riesgo registrados para este paciente."
+        lines = []
+        for r in rows:
+            action = r["doctor_action"] or "Pendiente revisión médica"
+            critical = " ⚠ CRÍTICO" if r["is_critical"] else ""
+            date = str(r["created_at"])[:10]
+            lines.append(
+                f"[{date}] {r['model_type']}: score={float(r['risk_score']):.3f} | "
+                f"{r['risk_category']}{critical} | Médico: {action}"
+            )
+        return "Reportes de riesgo clínico:\n" + "\n".join(lines)
+    except Exception as e:
+        return f"Error consultando reportes: {e}"
+
+
+AGENT_TOOLS = [query_fhir, query_risk_reports, invoke_ml_model, invoke_dl_model, create_fhir_report, search_clinical_docs]
