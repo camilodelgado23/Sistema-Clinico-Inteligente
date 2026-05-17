@@ -101,6 +101,8 @@ services:
       hapi.fhir.expunge_enabled: "false"
       hapi.fhir.narrative_enabled: "false"
       hapi.fhir.bulk_export_enabled: "false"
+      hapi.fhir.history_enabled: "true"
+      hapi.fhir.max_fetch_size: "500"
     depends_on:
       postgres:
         condition: service_healthy

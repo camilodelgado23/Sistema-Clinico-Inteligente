@@ -159,7 +159,13 @@ async def get_patient(
     db: asyncpg.Connection = Depends(get_db),
 ):
     row = await db.fetchrow(
-        "SELECT * FROM patients WHERE id = $1::uuid AND deleted_at IS NULL", pid
+        """SELECT p.*,
+                  (SELECT COUNT(*) FROM risk_reports r
+                   WHERE r.patient_id = p.id AND r.deleted_at IS NULL AND r.signed_at IS NULL
+                  ) AS pending_reports
+           FROM patients p
+           WHERE p.id = $1::uuid AND p.deleted_at IS NULL""",
+        pid,
     )
     if not row:
         raise HTTPException(404, "Paciente no encontrado")
@@ -169,6 +175,7 @@ async def get_patient(
     await log_audit(db, str(user["id"]), user["role"], "VIEW_PATIENT", "Patient",
                     pid, request.client.host if request.client else None)
     fhir = _patient_to_fhir(row)
+    fhir["pending_reports"] = int(row["pending_reports"] or 0)
     if user["role"] == "ADMIN":
         fhir["identification_doc"] = "••••••••"
         fhir["birthDate"] = "••••••••"
@@ -187,10 +194,30 @@ async def soft_delete_patient(
     user: dict = Depends(require_admin),
     db: asyncpg.Connection = Depends(get_db),
 ):
-    await db.execute(
-        "UPDATE patients SET deleted_at = NOW() WHERE id = $1::uuid AND deleted_at IS NULL", pid
+    # Res. 1995/1999 — no se puede cerrar HC con RiskReport sin firma
+    pending = await db.fetchrow(
+        """SELECT id FROM risk_reports
+           WHERE patient_id = $1::uuid AND deleted_at IS NULL
+             AND signed_at IS NULL""",
+        pid,
     )
-    await log_audit(db, str(user["id"]), user["role"], "DELETE_USER", "Patient",
+    if pending:
+        raise HTTPException(
+            status_code=409,
+            detail="No se puede cerrar HC con RiskReport pendiente de firma (Res. 1995/1999)",
+        )
+
+    await db.execute(
+        "UPDATE patients SET is_active = FALSE, deleted_at = NOW() WHERE id = $1::uuid AND deleted_at IS NULL",
+        pid,
+    )
+    # Marcar observaciones como entered-in-error (FHIR R4 §11.5)
+    await db.execute(
+        """UPDATE observations SET status = 'entered-in-error', deleted_at = NOW()
+           WHERE patient_id = $1::uuid AND deleted_at IS NULL""",
+        pid,
+    )
+    await log_audit(db, str(user["id"]), user["role"], "SOFT_DELETE_PATIENT", "Patient",
                     pid, request.client.host if request.client else None)
 
 

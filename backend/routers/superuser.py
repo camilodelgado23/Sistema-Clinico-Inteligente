@@ -139,27 +139,44 @@ async def search_patients(
     practitioner: dict = Depends(require_superuser),
     db: asyncpg.Connection = Depends(get_db),
 ):
-    """Buscar paciente por nombre o fragmento.
-    identifier puede ser: nombre libre, o con prefijo CC|nombre / TI|nombre.
-    identification_doc está cifrado (BYTEA) — la búsqueda es por nombre.
+    """Buscar paciente por nombre o número de documento.
+    Formatos aceptados:
+      - "Juan Pérez"         → búsqueda por nombre (ILIKE)
+      - "CC|12345678"        → búsqueda exacta por número de documento
+      - "TI|12345678"        → igual, cualquier prefijo doc_type|número
+      - "12345678"           → si es numérico, busca por documento; si no, por nombre
     """
-    # Extraer el término de búsqueda: ignorar el prefijo doc_type si lo hay
-    if "|" in identifier:
-        search_term = identifier.split("|", 1)[1].strip()
-    else:
-        search_term = identifier.strip()
+    doc_type, search_term = None, identifier.strip()
+
+    if "|" in search_term:
+        parts = search_term.split("|", 1)
+        doc_type    = parts[0].strip().upper()
+        search_term = parts[1].strip()
 
     if not search_term:
         raise HTTPException(status_code=400, detail="Ingresa un nombre o número de documento para buscar")
 
-    rows = await db.fetch(
-        """SELECT id, name, birth_date, fhir_id, created_at
-           FROM patients
-           WHERE deleted_at IS NULL
-             AND name ILIKE $1
-           ORDER BY created_at DESC LIMIT 20""",
-        f"%{search_term}%",
-    )
+    # Determinar si la búsqueda es por número de documento o por nombre
+    is_doc_search = search_term.isdigit() or doc_type is not None
+
+    if is_doc_search:
+        rows = await db.fetch(
+            """SELECT id, name, birth_date, fhir_id, document_number, document_type, created_at
+               FROM patients
+               WHERE deleted_at IS NULL
+                 AND document_number = $1
+               ORDER BY created_at DESC LIMIT 20""",
+            search_term,
+        )
+    else:
+        rows = await db.fetch(
+            """SELECT id, name, birth_date, fhir_id, document_number, document_type, created_at
+               FROM patients
+               WHERE deleted_at IS NULL
+                 AND name ILIKE $1
+               ORDER BY created_at DESC LIMIT 20""",
+            f"%{search_term}%",
+        )
 
     entries = [
         {
@@ -168,6 +185,12 @@ async def search_patients(
             "name": [{"text": r["name"]}],
             "birthDate": r["birth_date"].isoformat() if r["birth_date"] else None,
             "fhir_id": r["fhir_id"],
+            "identifier": [
+                {
+                    "system": f"https://www.datos.gov.co/d/{(r['document_type'] or 'CC').lower()}",
+                    "value": r["document_number"],
+                }
+            ] if r["document_number"] else [],
         }
         for r in rows
     ]
@@ -197,26 +220,48 @@ async def create_patient_external(
     ).strip()
     birth_date = body.get("birthDate")
 
-    existing = await db.fetchrow(
-        "SELECT id FROM patients WHERE name = $1 AND deleted_at IS NULL",
-        full_name,
-    )
+    # Extraer identifier FHIR R4 (ej. CC, TI, PA)
+    doc_number, doc_type = None, "CC"
+    for ident in body.get("identifier", []):
+        val = ident.get("value", "").strip()
+        if val:
+            doc_number = val
+            # Inferir tipo desde el system (URL) o type.coding
+            sys = ident.get("system", "")
+            coding = (ident.get("type", {}).get("coding") or [{}])[0]
+            code = coding.get("code", "").upper() or sys.split("/")[-1].upper()
+            if code in ("CC", "TI", "CE", "PA", "RC"):
+                doc_type = code
+            break
+
+    # Evitar duplicado por número de documento
+    if doc_number:
+        existing = await db.fetchrow(
+            "SELECT id FROM patients WHERE document_number = $1 AND deleted_at IS NULL",
+            doc_number,
+        )
+    else:
+        existing = await db.fetchrow(
+            "SELECT id FROM patients WHERE name = $1 AND deleted_at IS NULL",
+            full_name,
+        )
     if existing:
         raise HTTPException(status_code=409, detail="Paciente ya existe en este sistema")
 
     row = await db.fetchrow(
-        """INSERT INTO patients (name, birth_date, is_active)
-           VALUES ($1, $2, TRUE)
+        """INSERT INTO patients (name, birth_date, document_number, document_type, is_active)
+           VALUES ($1, $2, $3, $4, TRUE)
            RETURNING id, created_at""",
-        full_name, birth_date,
+        full_name, birth_date, doc_number, doc_type,
     )
 
     ip = request.client.host if request.client else None
+    import json as _json
     await db.execute(
         """INSERT INTO superuser_audit (practitioner_id, action, patient_id, ip_address, detail)
            VALUES ($1::uuid, 'CREATE_PATIENT', $2::uuid, $3::inet, $4::jsonb)""",
         str(practitioner["id"]), str(row["id"]), ip,
-        '{"source": "external_system"}',
+        _json.dumps({"source": "external_system", "doc_number": doc_number}),
     )
 
     return {
@@ -225,6 +270,12 @@ async def create_patient_external(
         "meta": {"lastUpdated": row["created_at"].isoformat()},
         "name": [{"text": full_name}],
         "birthDate": birth_date,
+        "identifier": [
+            {
+                "system": f"https://www.datos.gov.co/d/{doc_type.lower()}",
+                "value": doc_number,
+            }
+        ] if doc_number else [],
     }
 
 

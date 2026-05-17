@@ -1662,6 +1662,242 @@ function CreatePractitionerModal({ onClose, onCreated }) {
   )
 }
 
+// ── Sección Modelos ML/DL ─────────────────────────────────────────────────────
+function MetricBar({ label, value, max = 1, color = '#38bdf8' }) {
+  const pct = Math.round((value / max) * 100)
+  return (
+    <div style={{ marginBottom: '0.75rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+        <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+        <span style={{ color, fontWeight: 700 }}>{(value * 100).toFixed(1)}%</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3, transition: 'width 0.6s ease' }} />
+      </div>
+    </div>
+  )
+}
+
+function EpochChart({ epochs }) {
+  if (!epochs || epochs.length === 0) return null
+  const W = 340, H = 100, pad = { t: 8, r: 8, b: 24, l: 32 }
+  const iW = W - pad.l - pad.r
+  const iH = H - pad.t - pad.b
+  const vals = epochs.map(e => e.val_f1)
+  const minV = Math.min(...vals) - 0.02
+  const maxV = Math.max(...vals) + 0.01
+  const x = i => pad.l + (i / (epochs.length - 1)) * iW
+  const y = v => pad.t + iH - ((v - minV) / (maxV - minV)) * iH
+  const pathD = epochs.map((e, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(e.val_f1).toFixed(1)}`).join(' ')
+  const areaD = `${pathD} L${x(epochs.length - 1).toFixed(1)},${(pad.t + iH).toFixed(1)} L${pad.l},${(pad.t + iH).toFixed(1)} Z`
+  const bestI = vals.indexOf(Math.max(...vals))
+  return (
+    <svg width={W} height={H} style={{ overflow: 'visible', display: 'block', maxWidth: '100%' }}>
+      {/* grid lines */}
+      {[0, 0.5, 1].map(r => {
+        const yy = pad.t + iH - r * iH
+        return <line key={r} x1={pad.l} x2={pad.l + iW} y1={yy} y2={yy} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+      })}
+      {/* area fill */}
+      <defs>
+        <linearGradient id="epGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <path d={areaD} fill="url(#epGrad)" />
+      {/* line */}
+      <path d={pathD} fill="none" stroke="#38bdf8" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      {/* best epoch dot */}
+      <circle cx={x(bestI)} cy={y(vals[bestI])} r={4} fill="#38bdf8" stroke="#0f1923" strokeWidth={2} />
+      {/* x-axis epoch labels */}
+      {epochs.filter((_, i) => epochs.length <= 10 || i % 2 === 0).map((e, _, arr) => {
+        const origI = epochs.indexOf(e)
+        return (
+          <text key={e.epoch} x={x(origI)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={9}>
+            {e.epoch}
+          </text>
+        )
+      })}
+      {/* y-axis label */}
+      <text x={pad.l - 4} y={pad.t + iH / 2} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={9}
+        transform={`rotate(-90,${pad.l - 18},${pad.t + iH / 2})`}>F1</text>
+    </svg>
+  )
+}
+
+function ModelsSection() {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(null)
+
+  useEffect(() => {
+    adminAPI.modelMetrics()
+      .then(r => setData(r.data))
+      .catch(() => setError('No se pudieron cargar las métricas'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div style={{ padding: '2rem', color: 'var(--text-secondary)', textAlign: 'center' }}>Cargando métricas…</div>
+  if (error)   return <div style={{ padding: '2rem', color: '#f87171', textAlign: 'center' }}>{error}</div>
+
+  const ml = data?.ml || {}
+  const dl = data?.dl || {}
+  const mlM = ml.metrics || {}
+  const cardStyle = {
+    background: 'var(--surface)',
+    border: '1px solid var(--border)',
+    borderRadius: 12,
+    padding: '1.5rem',
+    flex: '1 1 340px',
+    minWidth: 0,
+  }
+  const sectionHead = { fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '1rem' }
+  const pill = (txt, color) => (
+    <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: 99, background: `${color}18`, color, border: `1px solid ${color}30`, fontWeight: 700 }}>
+      {txt}
+    </span>
+  )
+
+  return (
+    <div style={{ padding: '1.5rem' }}>
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Métricas de Modelos</h2>
+        <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+          Evaluación sobre conjunto de prueba — sin reentrenamiento
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap' }}>
+
+        {/* ── ML Card ── */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '1rem' }}>Modelo ML</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: 2 }}>{ml.model || 'XGBoost'}</div>
+            </div>
+            {pill('Diabetes', '#f59e0b')}
+          </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={sectionHead}>Rendimiento (test set)</div>
+            <MetricBar label="F1 Score"   value={mlM.f1        || 0} color="#38bdf8" />
+            <MetricBar label="AUC-ROC"    value={mlM.auc_roc   || 0} color="#a78bfa" />
+            <MetricBar label="Precisión"  value={mlM.precision || 0} color="#34d399" />
+            <MetricBar label="Recall"     value={mlM.recall    || 0} color="#fb923c" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            {[
+              { label: 'Train', value: mlM.n_train },
+              { label: 'Val',   value: mlM.n_val   },
+              { label: 'Test',  value: mlM.n_test  },
+            ].map(s => (
+              <div key={s.label} style={{ textAlign: 'center', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '0.5rem' }}>
+                <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{s.value ?? '—'}</div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={sectionHead}>Dataset</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{ml.dataset || '—'}</div>
+
+          {ml.features?.length > 0 && (
+            <>
+              <div style={{ ...sectionHead, marginTop: '1rem' }}>Features ({ml.features.length})</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                {ml.features.map(f => (
+                  <span key={f} style={{ fontSize: '0.7rem', padding: '2px 7px', borderRadius: 99, background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}>{f}</span>
+                ))}
+              </div>
+            </>
+          )}
+
+          {ml.thresholds && Object.keys(ml.thresholds).length > 0 && (
+            <>
+              <div style={{ ...sectionHead, marginTop: '1rem' }}>Umbrales de riesgo</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
+                {Object.entries(ml.thresholds).map(([cat, range]) => {
+                  const colors = { LOW: '#34d399', MEDIUM: '#f59e0b', HIGH: '#fb923c', CRITICAL: '#f87171' }
+                  const c = colors[cat] || '#8badc8'
+                  return (
+                    <div key={cat} style={{ fontSize: '0.72rem', padding: '4px 8px', borderRadius: 6, background: `${c}12`, color: c, border: `1px solid ${c}25` }}>
+                      <strong>{cat}</strong>: {Array.isArray(range) ? `${(range[0]*100).toFixed(0)}–${(range[1]*100).toFixed(0)}%` : String(range)}
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── DL Card ── */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '1rem' }}>Modelo DL</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: 2 }}>{dl.architecture || dl.model || 'EfficientNet-B0'}</div>
+            </div>
+            {pill('Retinopatía', '#f87171')}
+          </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={sectionHead}>Rendimiento (validación)</div>
+            <MetricBar label="Best val F1"          value={dl.best_val_f1        || 0} color="#38bdf8" />
+            <MetricBar label="AUC-ROC macro (OvR)"  value={dl.auc_roc_macro      || 0} color="#a78bfa" />
+            <MetricBar label="AUC-ROC weighted"      value={dl.auc_roc_weighted   || 0} color="#34d399" />
+          </div>
+
+          {dl.epochs?.length > 0 && (
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={sectionHead}>Curva de entrenamiento — F1 por época</div>
+              <EpochChart epochs={dl.epochs} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                <span>Época 1</span>
+                <span>Época {dl.epochs.length}</span>
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <div style={sectionHead}>Dataset</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{dl.dataset || '—'}</div>
+          </div>
+
+          {dl.class_names?.length > 0 && (
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={sectionHead}>Clases ({dl.num_classes})</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                {dl.class_names.map((cls, i) => {
+                  const riskColors = { LOW: '#34d399', MEDIUM: '#f59e0b', HIGH: '#fb923c', CRITICAL: '#f87171' }
+                  const risk = dl.risk_map?.[String(i)]
+                  const c = riskColors[risk] || '#8badc8'
+                  return (
+                    <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem' }}>
+                      <span style={{ width: 20, height: 20, borderRadius: 4, background: `${c}20`, border: `1px solid ${c}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: c, flexShrink: 0 }}>{i}</span>
+                      <span>{cls}</span>
+                      {risk && <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: c, fontWeight: 600 }}>{risk}</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {dl.clinical_note && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '0.75rem', lineHeight: 1.5 }}>
+              {dl.clinical_note}
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ── Main AdminPanel ───────────────────────────────────────────────────────────
 export default function AdminPanel() {
   const [stats,           setStats]           = useState(null)
@@ -1671,7 +1907,7 @@ export default function AdminPanel() {
   const [alertsDismissed, setAlertsDismissed] = useState(false)
   const [showThresholds,  setShowThresholds]  = useState(false)
 
-  const TABS = ['Estadísticas', 'Usuarios', 'Asignaciones', 'Médicos Ext.', 'Audit Log', 'ARCO']
+  const TABS = ['Estadísticas', 'Usuarios', 'Asignaciones', 'Médicos Ext.', 'Modelos', 'Audit Log', 'ARCO']
 
   const loadStats = useCallback(async () => {
     try {
@@ -1790,6 +2026,7 @@ export default function AdminPanel() {
       {activeTab === 'Usuarios'      && <UsersSection />}
       {activeTab === 'Asignaciones'  && <AssignmentsSection />}
       {activeTab === 'Médicos Ext.'  && <PractitionersSection />}
+      {activeTab === 'Modelos'       && <ModelsSection />}
       {activeTab === 'Audit Log'     && <AuditSection />}
       {activeTab === 'ARCO'          && <ArcoSection />}
     </div>

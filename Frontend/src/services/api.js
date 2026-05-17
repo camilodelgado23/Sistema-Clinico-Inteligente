@@ -90,10 +90,24 @@ export const fhirAPI = {
     })
   },
 
-  listRiskReports: (patientId, limit = 20) =>
-    api.get('/fhir/RiskAssessment', { params: { subject: patientId, limit } }),
-  getRiskReport: (rid)       => api.get(`/fhir/RiskAssessment/${rid}`),
-  signReport:    (rid, body) => api.patch(`/fhir/RiskAssessment/${rid}/sign`, body),
+  listRiskReports: async (patientId, limit = 20) => {
+    const res = await api.get('/fhir/RiskAssessment', { params: { subject: patientId, limit } })
+    if (res.data?.entry) {
+      res.data.entry = res.data.entry.map(r => ({
+        ...r,
+        gradcam_url:  fixMinioUrl(r.gradcam_url),
+        original_url: fixMinioUrl(r.original_url),
+      }))
+    }
+    return res
+  },
+  getRiskReport: async (rid) => {
+    const res = await api.get(`/fhir/RiskAssessment/${rid}`)
+    if (res.data?.gradcam_url)  res.data.gradcam_url  = fixMinioUrl(res.data.gradcam_url)
+    if (res.data?.original_url) res.data.original_url = fixMinioUrl(res.data.original_url)
+    return res
+  },
+  signReport: (rid, body) => api.patch(`/fhir/RiskAssessment/${rid}/sign`, body),
 }
 
 // ── Inference API ─────────────────────────────────────────────────────────────
@@ -152,6 +166,8 @@ export const adminAPI = {
   listPractitioners:   (params) => api.get('/admin/practitioners', { params }),
   createPractitioner:  (body)   => api.post('/admin/practitioners', body),
   togglePractitioner:  (pid)    => api.patch(`/admin/practitioners/${pid}`),
+
+  modelMetrics: () => api.get('/admin/model-metrics'),
 }
 
 // ── Assignment API ────────────────────────────────────────────────────────────

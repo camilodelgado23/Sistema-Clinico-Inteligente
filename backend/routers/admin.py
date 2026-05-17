@@ -772,3 +772,28 @@ async def toggle_practitioner(
                     request.client.host if request.client else None,
                     detail={"email": row["email"]})
     return {"id": pid, "is_active": new_status}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Model metrics proxy — agrega ML y DL sin reentrenar
+# ──────────────────────────────────────────────────────────────────────────────
+import httpx
+from core.config import settings as _cfg
+
+@router.get("/model-metrics")
+async def get_model_metrics(user: dict = Depends(require_admin)):
+    """Proxy a /ml/metrics y /dl/metrics. Agrega y retorna las métricas de ambos modelos."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            r_ml = await client.get(f"{_cfg.ML_SERVICE_URL}/ml/metrics")
+            ml_data = r_ml.json() if r_ml.status_code == 200 else {"error": "ML service no disponible"}
+        except Exception:
+            ml_data = {"error": "ML service no disponible"}
+
+        try:
+            r_dl = await client.get(f"{_cfg.DL_SERVICE_URL}/dl/metrics")
+            dl_data = r_dl.json() if r_dl.status_code == 200 else {"error": "DL service no disponible"}
+        except Exception:
+            dl_data = {"error": "DL service no disponible"}
+
+    return {"ml": ml_data, "dl": dl_data}

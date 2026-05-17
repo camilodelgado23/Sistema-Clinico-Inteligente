@@ -6,6 +6,7 @@ import {
 import { fhirAPI, inferAPI } from '../services/api'
 import { useAuthStore } from '../store/auth'
 import ImageViewer from '../components/ImageViewer'
+import toast from 'react-hot-toast'
 import './PatientDetail.css'
 
 const calcAge = (bd) => {
@@ -1196,7 +1197,14 @@ export default function PatientDetail() {
           </div>
         </div>
         <div style={{marginLeft:'auto',display:'flex',gap:'0.75rem',alignItems:'center'}}>
-          <button className="btn btn-ghost" onClick={()=>navigate('/dashboard')}>← Volver</button>
+          <button className="btn btn-ghost" onClick={()=>{
+            if (user?.role==='MEDICO' && pending>0) {
+              toast.error(`Debe firmar ${pending} reporte${pending>1?'s':''} antes de salir`)
+              setActiveTab('Reportes')
+              return
+            }
+            navigate('/dashboard')
+          }}>← Volver</button>
           {user?.role==='MEDICO'&&(
             <button className="btn btn-primary" disabled={closing||pending>0}
               title={pending>0?'Debe firmar todos los reportes primero':''}

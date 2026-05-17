@@ -218,6 +218,21 @@ async def version():
     }
 
 
+@app.get("/ml/metrics")
+async def metrics():
+    import json, pathlib
+    metrics_path = pathlib.Path(__file__).parent / "training" / "metrics.json"
+    raw = json.loads(metrics_path.read_text()) if metrics_path.exists() else _metadata.get("metrics", {})
+    return {
+        "model":       "XGBoost + CalibratedClassifierCV (isotonic, cv=5)",
+        "task":        "diabetes",
+        "dataset":     "PIMA Indians Diabetes (UCI ML)",
+        "features":    _metadata.get("feature_cols", []),
+        "thresholds":  _metadata.get("thresholds", {}),
+        "metrics":     raw,
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "ml-service",

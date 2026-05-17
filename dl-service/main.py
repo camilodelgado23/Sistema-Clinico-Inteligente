@@ -445,6 +445,28 @@ async def version():
     }
 
 
+@app.get("/dl/metrics")
+async def metrics():
+    import json, pathlib
+    metrics_path = pathlib.Path(__file__).parent / "training" / "metrics.json"
+    raw = json.loads(metrics_path.read_text()) if metrics_path.exists() else {}
+    return {
+        "model":         "EfficientNet-B0 fine-tuned",
+        "task":          "retinopathy",
+        "dataset":       _meta.get("dataset", "APTOS 2019 Blindness Detection"),
+        "architecture":  _meta.get("architecture", "EfficientNet-B0"),
+        "num_classes":   _meta.get("num_classes", 5),
+        "class_names":   _meta.get("class_names", []),
+        "risk_map":      _meta.get("risk_map", {}),
+        "clinical_note": _meta.get("clinical_note", ""),
+        "best_val_f1":      raw.get("best_val_f1", _meta.get("best_val_f1")),
+        "auc_roc_macro":    raw.get("auc_roc_macro"),
+        "auc_roc_weighted": raw.get("auc_roc_weighted"),
+        "n_val":            raw.get("n_val"),
+        "epochs":           raw.get("epochs", []),
+    }
+
+
 @app.get("/health")
 async def health():
     return {
