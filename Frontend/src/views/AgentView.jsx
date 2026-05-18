@@ -317,6 +317,8 @@ export default function AgentView() {
           )}
         </div>
 
+        <RagasPanel report={ragasReport} onRun={runRagas} running={ragasRunning} />
+
         {sessionId && (
           <div className="agent-sidebar-section">
             <div style={{display:'flex',gap:'0.5rem',alignItems:'center',justifyContent:'space-between'}}>
@@ -328,8 +330,6 @@ export default function AgentView() {
             </button>
           </div>
         )}
-
-        <RagasPanel report={ragasReport} onRun={runRagas} running={ragasRunning} />
 
         <div className="agent-sidebar-section">
           <div className="alert alert-warning" style={{fontSize:'0.72rem'}}>

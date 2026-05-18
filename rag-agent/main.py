@@ -109,16 +109,16 @@ app.add_middleware(
 )
 
 SYSTEM_PROMPT = """Eres un asistente clínico especializado en diabetes y retinopatía diabética.
-Tienes acceso a datos de pacientes via FHIR R4, modelos de IA calibrados (ML/DL) y una base de
-conocimiento clínica con guías y literatura médica.
+Tienes acceso a una base de conocimiento clínica con guías y literatura médica.
 
-Principios:
-1. Basa tus respuestas en evidencia clínica y datos reales del paciente cuando estén disponibles.
-2. Nunca inventes datos — si no tienes información, indícalo claramente.
-3. Usa lenguaje clínico preciso pero comprensible para el médico.
-4. Cita las fuentes cuando uses la base de conocimiento.
-5. Para diagnósticos definitivos, indica que son de apoyo y requieren criterio médico.
-6. Nunca reveles PII completa de pacientes en tus respuestas.
+Instrucciones de respuesta:
+- Responde DIRECTAMENTE a la pregunta clínica, comenzando de inmediato con la información solicitada.
+- Basa tus respuestas en el "Contexto clínico relevante" proporcionado y cita sus datos literalmente.
+- No añadas introducciones, preambles ni frases como "Como asistente clínico..." — ve al punto.
+- Nunca inventes datos numéricos, clasificaciones ni criterios — cítalos del contexto.
+- Si el contexto no cubre la pregunta completamente, usa el conocimiento clínico estándar indicándolo.
+- Respuestas concisas y estructuradas (listas o párrafos cortos según corresponda).
+- Nunca reveles PII completa de pacientes en tus respuestas.
 
 Normativa aplicable: Resolución 866/2021, Ley 1581/2012, Resolución 1995/1999.
 """
@@ -135,6 +135,7 @@ class ChatResponse(BaseModel):
     answer: str
     session_id: str
     sources: list[str] = []
+    contexts: list[str] = []
     rag_mode: str
 
 
@@ -167,9 +168,9 @@ async def chat(body: ChatRequest):
 
     # Recuperación RAG
     rag_mode = body.rag_mode
-    retrieved = retriever.retrieve(body.message, k=5, mode="naive" if rag_mode == "naive" else "hybrid")
+    retrieved = retriever.retrieve(body.message, k=8, mode="naive" if rag_mode == "naive" else "hybrid")
     sources = list({r["source"] for r in retrieved})
-    rag_context = "\n\n".join(r["text"][:600] for r in retrieved) if retrieved else ""
+    rag_context = "\n\n".join(r["text"][:800] for r in retrieved) if retrieved else ""
 
     llm = app.state.llm
 
@@ -190,7 +191,8 @@ async def chat(body: ChatRequest):
         summary = f"Consulta sobre: {body.message[:100]} | Respuesta: {answer[:200]}"
         await _long_mem.save_summary(body.patient_id, summary)
 
-    return ChatResponse(answer=answer, session_id=session_id, sources=sources, rag_mode=rag_mode)
+    contexts = [r["text"][:1200] for r in retrieved] if retrieved else []
+    return ChatResponse(answer=answer, session_id=session_id, sources=sources, contexts=contexts, rag_mode=rag_mode)
 
 
 async def _standard_response(llm, message: str, history: list, rag_context: str, long_context: str,
@@ -219,6 +221,15 @@ async def _standard_response(llm, message: str, history: list, rag_context: str,
         response = await llm.ainvoke(messages)
         return response.content
     except Exception as e:
+        err = str(e)
+        if "429" in err or "rate_limit" in err.lower() or "rate limit" in err.lower():
+            import re
+            retry_match = re.search(r"try again in (\d+m[\d.]+s|\d+[\d.]+s)", err)
+            retry_info = f" Intenta de nuevo en {retry_match.group(1)}." if retry_match else " Intenta de nuevo en unos minutos."
+            return (
+                f"⚠ El servicio de IA alcanzó el límite de uso temporalmente.{retry_info}\n\n"
+                f"Mientras tanto, aquí está el contexto clínico recuperado:\n\n{rag_context[:600] if rag_context else 'No hay contexto disponible.'}"
+            )
         return f"Error del LLM: {e}. Contexto disponible: {rag_context[:300] if rag_context else 'Ninguno.'}"
 
 
@@ -403,17 +414,22 @@ async def _run_ragas_eval():
     global _ragas_running
     import asyncio
     _ragas_running = True
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             "python", "/app/ragas_eval.py",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=1200)
         if proc.returncode != 0:
             print(f"RAGAS eval error: {stderr.decode()[:500]}")
         else:
             print("RAGAS eval completado.")
+    except asyncio.TimeoutError:
+        print("RAGAS eval timeout (20 min) — abortando.")
+        if proc:
+            proc.kill()
     except Exception as e:
         print(f"Error lanzando RAGAS eval: {e}")
     finally:

@@ -12,7 +12,14 @@
   flex-direction: column;
   gap: 0.875rem;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-2) transparent;
+  padding-right: 2px;
 }
+
+.agent-sidebar::-webkit-scrollbar { width: 4px; }
+.agent-sidebar::-webkit-scrollbar-track { background: transparent; }
+.agent-sidebar::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
 
 .agent-sidebar-section {
   background: var(--bg-2);

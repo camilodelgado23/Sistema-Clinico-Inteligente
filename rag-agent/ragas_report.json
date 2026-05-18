@@ -1,0 +1,31 @@
+{
+  "total_questions": 3,
+  "agent_url": "http://localhost:8004",
+  "evaluator": "groq/llama-3.1-8b-instant",
+  "embeddings": "paraphrase-multilingual-MiniLM-L12-v2",
+  "metrics": {
+    "faithfulness": 0.75,
+    "answer_relevancy": 0.9101316118010305,
+    "context_precision": 0.9999999999822222,
+    "context_recall": 0.8888888888888888
+  },
+  "thresholds": {
+    "faithfulness": {
+      "min": 0.75,
+      "ideal": 0.85
+    },
+    "answer_relevancy": {
+      "min": 0.7,
+      "ideal": 0.8
+    },
+    "context_precision": {
+      "min": 0.65,
+      "ideal": 0.75
+    },
+    "context_recall": {
+      "min": 0.65,
+      "ideal": 0.75
+    }
+  },
+  "penalization_risk": false
+}

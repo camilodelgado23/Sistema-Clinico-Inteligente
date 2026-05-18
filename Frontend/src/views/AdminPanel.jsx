@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { adminAPI, assignmentAPI, arcoAPI } from '../services/api'
+import { adminAPI, assignmentAPI, arcoAPI, ragAPI } from '../services/api'
 import './AdminPanel.css'
 
 // ── Umbrales por defecto ───────────────────────────────────────────────────────
@@ -1727,15 +1727,19 @@ function EpochChart({ epochs }) {
 }
 
 function ModelsSection() {
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState(null)
+  const [data,      setData]      = useState(null)
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState(null)
+  const [ragas,     setRagas]     = useState(null)
 
   useEffect(() => {
     adminAPI.modelMetrics()
       .then(r => setData(r.data))
       .catch(() => setError('No se pudieron cargar las métricas'))
       .finally(() => setLoading(false))
+    ragAPI.ragasReport()
+      .then(d => setRagas(d))
+      .catch(() => setRagas(null))
   }, [])
 
   if (loading) return <div style={{ padding: '2rem', color: 'var(--text-secondary)', textAlign: 'center' }}>Cargando métricas…</div>
@@ -1894,7 +1898,73 @@ function ModelsSection() {
         </div>
 
       </div>
-    </div>
+
+      {/* ── RAGAS Card ── */}
+      {ragas && (() => {
+        const RAGAS_META = {
+          faithfulness:      { label: 'Faithfulness',      color: '#a78bfa', min: 0.75, ideal: 0.85, desc: 'Respuesta soportada por el contexto (anti-alucinación)' },
+          answer_relevancy:  { label: 'Answer Relevancy',  color: '#38bdf8', min: 0.70, ideal: 0.80, desc: 'Pertinencia de la respuesta a la pregunta' },
+          context_precision: { label: 'Context Precision', color: '#34d399', min: 0.65, ideal: 0.75, desc: 'Precisión del contexto recuperado (Precision@k)' },
+          context_recall:    { label: 'Context Recall',    color: '#fb923c', min: 0.65, ideal: 0.75, desc: 'Cobertura del contexto necesario para responder' },
+        }
+        const summary = ragas.summary || {}
+        return (
+          <div style={{ ...cardStyle, flexBasis: '100%', marginTop: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                  <span style={{ fontSize: '1rem', fontWeight: 700 }}>Agente RAG</span>
+                  {pill('RAGAS Eval', '#a78bfa')}
+                  {pill(`${ragas.total_questions}Q`, '#64748b')}
+                </div>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                  {ragas.evaluator || 'groq/llama-3.1-8b-instant'} · ragas==0.1.14 · HuggingFace embeddings
+                </p>
+              </div>
+              {ragas.penalization_risk
+                ? <span style={{ fontSize: '0.7rem', padding: '3px 10px', borderRadius: 99, background: '#f8717118', color: '#f87171', border: '1px solid #f8717130', fontWeight: 700 }}>⚠ Faithfulness &lt; 0.75</span>
+                : <span style={{ fontSize: '0.7rem', padding: '3px 10px', borderRadius: 99, background: '#34d39918', color: '#34d399', border: '1px solid #34d39930', fontWeight: 700 }}>✓ Sin penalización</span>
+              }
+            </div>
+
+            <p style={sectionHead}>MÉTRICAS RAGAS (TEST SET — {ragas.total_questions} preguntas)</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+              {Object.entries(RAGAS_META).map(([key, meta]) => {
+                const score = summary[key]?.score ?? 0
+                const pass  = score >= meta.min
+                const pct   = Math.min(100, Math.round(score * 100))
+                return (
+                  <div key={key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>{meta.label}</span>
+                      <span style={{ color: pass ? meta.color : '#f87171', fontWeight: 700 }}>
+                        {(score * 100).toFixed(1)}% {pass ? '✓' : '✗'}
+                      </span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.07)', overflow: 'hidden', position: 'relative' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: pass ? meta.color : '#f87171', borderRadius: 3, transition: 'width 0.6s ease' }} />
+                      {/* línea de umbral mínimo */}
+                      <div style={{ position: 'absolute', top: 0, left: `${meta.min * 100}%`, width: 2, height: '100%', background: 'rgba(255,255,255,0.4)' }} />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.2rem', fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+                      <span>{meta.desc}</span>
+                      <span>mín {(meta.min * 100).toFixed(0)}% | ideal {(meta.ideal * 100).toFixed(0)}%</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>Metodología:</strong> Evaluación offline con RAGAS 0.1.14.
+              Recolección de respuestas con el agente híbrido (FAISS + BM25), evaluación con LLM Groq llama-3.1-8b-instant
+              y embeddings locales HuggingFace all-MiniLM-L6-v2. Ejecutar <code>ragas_eval.py</code> para actualizar.
+            </div>
+          </div>
+        )
+      })()}
+
+  </div>
   )
 }
 

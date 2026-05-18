@@ -196,6 +196,7 @@ services:
       - faiss_data:/app/faiss_index
       - ./rag-agent/knowledge:/app/knowledge:ro
       - hf_cache:/root/.cache/huggingface
+      - ./rag-agent/ragas_report.json:/app/ragas_report.json
     depends_on:
       postgres:
         condition: service_healthy
