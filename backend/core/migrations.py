@@ -186,6 +186,12 @@ ALTER TABLE risk_reports ADD COLUMN IF NOT EXISTS original_url TEXT;
 -- ── Final: patient_user_id (si no existe) ────────────────────────────────────
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS patient_user_id UUID REFERENCES users(id);
 
+-- ── Final: document_number cifrado (interoperabilidad SuperUser) ──────────────
+-- Almacena el número de documento como BYTEA cifrado con pgcrypto AES-256.
+-- Separado de identification_doc (flujo FHIR interno) para el flujo externo.
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS document_number  BYTEA;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS document_type    VARCHAR(10) DEFAULT 'CC';
+
 -- ── Indexes ──────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_patients_owner       ON patients(owner_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_observations_pat     ON observations(patient_id) WHERE deleted_at IS NULL;

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from core.audit import log_audit
 from core.auth import require_admin
 from core.config import get_db, settings
+from core.crypto import encrypt_value, decrypt_value
 
 router = APIRouter(prefix="/api/v1", tags=["superuser"])
 bearer = HTTPBearer()
@@ -160,13 +161,15 @@ async def search_patients(
     is_doc_search = search_term.isdigit() or doc_type is not None
 
     if is_doc_search:
+        # Comparar descifrando en SQL — pgp_sym_decrypt devuelve TEXT para comparar
         rows = await db.fetch(
             """SELECT id, name, birth_date, fhir_id, document_number, document_type, created_at
                FROM patients
                WHERE deleted_at IS NULL
-                 AND document_number = $1
+                 AND document_number IS NOT NULL
+                 AND pgp_sym_decrypt(document_number, $2) = $1
                ORDER BY created_at DESC LIMIT 20""",
-            search_term,
+            search_term, settings.AES_KEY,
         )
     else:
         rows = await db.fetch(
@@ -178,8 +181,17 @@ async def search_patients(
             f"%{search_term}%",
         )
 
-    entries = [
-        {
+    entries = []
+    for r in rows:
+        # Descifrar número de documento para mostrar parcialmente enmascarado
+        doc_display = None
+        if r["document_number"]:
+            try:
+                plain = await decrypt_value(db, r["document_number"])
+                doc_display = plain[:2] + "****" + plain[-2:] if len(plain) > 4 else "****"
+            except Exception:
+                doc_display = "****"
+        entries.append({
             "resourceType": "Patient",
             "id": str(r["id"]),
             "name": [{"text": r["name"]}],
@@ -188,12 +200,10 @@ async def search_patients(
             "identifier": [
                 {
                     "system": f"https://www.datos.gov.co/d/{(r['document_type'] or 'CC').lower()}",
-                    "value": r["document_number"],
+                    "value": doc_display,
                 }
-            ] if r["document_number"] else [],
-        }
-        for r in rows
-    ]
+            ] if doc_display else [],
+        })
 
     return {
         "resourceType": "Bundle",
@@ -234,11 +244,14 @@ async def create_patient_external(
                 doc_type = code
             break
 
-    # Evitar duplicado por número de documento
+    # Evitar duplicado por número de documento (comparando cifrado)
     if doc_number:
         existing = await db.fetchrow(
-            "SELECT id FROM patients WHERE document_number = $1 AND deleted_at IS NULL",
-            doc_number,
+            """SELECT id FROM patients
+               WHERE deleted_at IS NULL
+                 AND document_number IS NOT NULL
+                 AND pgp_sym_decrypt(document_number, $2) = $1""",
+            doc_number, settings.AES_KEY,
         )
     else:
         existing = await db.fetchrow(
@@ -248,11 +261,14 @@ async def create_patient_external(
     if existing:
         raise HTTPException(status_code=409, detail="Paciente ya existe en este sistema")
 
+    # Cifrar número de documento antes de persistir
+    enc_doc = await encrypt_value(db, doc_number) if doc_number else None
+
     row = await db.fetchrow(
         """INSERT INTO patients (name, birth_date, document_number, document_type, is_active)
            VALUES ($1, $2, $3, $4, TRUE)
            RETURNING id, created_at""",
-        full_name, birth_date, doc_number, doc_type,
+        full_name, birth_date, enc_doc, doc_type,
     )
 
     ip = request.client.host if request.client else None
@@ -264,6 +280,7 @@ async def create_patient_external(
         _json.dumps({"source": "external_system", "doc_number": doc_number}),
     )
 
+    doc_masked = (doc_number[:2] + "****" + doc_number[-2:]) if doc_number and len(doc_number) > 4 else "****"
     return {
         "resourceType": "Patient",
         "id": str(row["id"]),
@@ -273,7 +290,7 @@ async def create_patient_external(
         "identifier": [
             {
                 "system": f"https://www.datos.gov.co/d/{doc_type.lower()}",
-                "value": doc_number,
+                "value": doc_masked,
             }
         ] if doc_number else [],
     }

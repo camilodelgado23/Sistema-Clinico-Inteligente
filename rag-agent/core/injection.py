@@ -46,6 +46,7 @@ def sanitize_input(text: str) -> str:
 
 def mask_pii(text: str) -> str:
     """Enmascara PII en respuestas antes de enviar al cliente."""
+    text = PII_PATTERNS["cedula"].sub(lambda m: m.group()[:2] + "****" + m.group()[-2:], text)
     text = PII_PATTERNS["email"].sub(lambda m: m.group()[:3] + "***@***.***", text)
     text = PII_PATTERNS["telefono"].sub(lambda m: m.group()[:3] + "****" + m.group()[-3:], text)
     return text
