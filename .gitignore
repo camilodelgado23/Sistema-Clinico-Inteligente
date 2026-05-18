@@ -1,7 +1,6 @@
 .env
 **/.env
 
-*.onnx
 *.pth
 *.pkl
 
