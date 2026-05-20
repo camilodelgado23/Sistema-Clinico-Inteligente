@@ -34,14 +34,18 @@ services:
 
   # ── FRONTEND ───────────────────────────────────────────────────────────────
   frontend:
-    build: ./Frontend
+    build:
+      context: ./Frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://147.182.131.232}
+        VITE_RAG_URL: ${VITE_RAG_URL:-https://147.182.131.232}
     expose:
       - "3000"
     networks:
       - clinical_net
     restart: unless-stopped
 
-  # ── POSTGRESQL (backend app + HAPI FHIR + MLflow) ──────────────────────────
+  # ── POSTGRESQL ──────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     environment:
@@ -67,8 +71,6 @@ services:
     build: ./backend
     expose:
       - "8000"
-    ports:
-      - "8000:8000"
     env_file: .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -84,7 +86,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # ── FHIR SERVER (HAPI con PostgreSQL — NO H2) ───────────────────────────────
+  # ── FHIR SERVER (HAPI con PostgreSQL) ──────────────────────────────────────
   fhir-server:
     image: hapiproject/hapi:v7.2.0
     expose:
@@ -115,8 +117,6 @@ services:
     build: ./ml-service
     expose:
       - "8001"
-    ports:
-      - "8001:8001"
     env_file: .env
     networks:
       - clinical_net
@@ -127,8 +127,6 @@ services:
     build: ./dl-service
     expose:
       - "8002"
-    ports:
-      - "8002:8002"
     env_file: .env
     networks:
       - clinical_net
@@ -139,8 +137,6 @@ services:
     build: ./orchestrator
     expose:
       - "8003"
-    ports:
-      - "8003:8003"
     env_file: .env
     depends_on:
       postgres:
@@ -153,7 +149,7 @@ services:
       - clinical_net
     restart: unless-stopped
 
-  # ── OLLAMA (LLM local cuantizado — sin API externa) ────────────────────────
+  # ── OLLAMA (LLM local cuantizado) ──────────────────────────────────────────
   ollama:
     image: ollama/ollama:latest
     expose:
@@ -170,7 +166,7 @@ services:
       retries: 8
       start_period: 20s
 
-  # ── OLLAMA INIT (descarga phi3:mini al arrancar) ────────────────────────────
+  # ── OLLAMA INIT ────────────────────────────────────────────────────────────
   ollama-init:
     image: ollama/ollama:latest
     depends_on:
@@ -189,8 +185,6 @@ services:
     build: ./rag-agent
     expose:
       - "8004"
-    ports:
-      - "8004:8004"
     env_file: .env
     volumes:
       - faiss_data:/app/faiss_index
@@ -213,7 +207,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # ── REDIS (memoria agente) ─────────────────────────────────────────────────
+  # ── REDIS ──────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
@@ -234,16 +228,13 @@ services:
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    expose:
+      - "9000"
+      - "9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_API_CORS_ALLOW_ORIGIN: "*"
-      MINIO_API_CORS_ALLOW_METHODS: "GET,PUT,POST,DELETE,HEAD"
-      MINIO_SERVER_URL: ${MINIO_SERVER_URL:-http://localhost:9000}
-      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:-http://localhost:9001}
+      MINIO_SERVER_URL: http://minio:9000
     volumes:
       - minio_data:/data
     networks:
@@ -266,7 +257,7 @@ services:
     networks:
       - clinical_net
 
-  # ── MLFLOW (con PostgreSQL backend) ────────────────────────────────────────
+  # ── MLFLOW ─────────────────────────────────────────────────────────────────
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.13.0
     command: >
@@ -276,8 +267,8 @@ services:
         --port 5000
         --backend-store-uri postgresql://clinai:${POSTGRES_PASSWORD:-clinai_secret}@postgres:5432/mlflow_db
         --default-artifact-root /mlflow/artifacts"
-    expose:
-      - "5000"
+    ports:
+      - "5000:5000"
     volumes:
       - mlflow_data:/mlflow
     depends_on:

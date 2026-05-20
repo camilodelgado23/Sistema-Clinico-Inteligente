@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { ragAPI } from '../services/api'
+import { useAuthStore } from '../store/auth'
 import './AgentView.css'
 
 function renderMarkdown(text) {
@@ -168,12 +169,16 @@ function RagasPanel({ report, onRun, running }) {
 }
 
 export default function AgentView() {
+  const { role } = useAuthStore()
+  const isAdmin = role?.toUpperCase() === 'ADMIN'
+
   const [messages, setMessages]     = useState([])
   const [input, setInput]           = useState('')
   const [loading, setLoading]       = useState(false)
   const [sessionId, setSessionId]   = useState(null)
   const [patientId, setPatientId]   = useState('')
-  const [ragMode, setRagMode]       = useState('hybrid')
+  const [ragMode, setRagMode]       = useState('agentic')
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [indexStatus, setIndexStatus] = useState(null)
   const [ragasReport, setRagasReport] = useState(null)
   const [ragasRunning, setRagasRunning] = useState(false)
@@ -264,62 +269,89 @@ export default function AgentView() {
 
   return (
     <div className="agent-layout fade-in">
-      {/* Sidebar config */}
+      {/* Sidebar */}
       <aside className="agent-sidebar">
-        <div className="agent-sidebar-section">
-          <h3 style={{color:'var(--text-1)',marginBottom:'0.75rem'}}>Configuración RAG</h3>
+        {!isAdmin && (
+          <div className="agent-sidebar-section">
+            <h3 style={{color:'var(--text-1)',marginBottom:'0.75rem'}}>Agente RAG Clínico</h3>
 
-          <label className="label">Modo RAG</label>
-          <div className="rag-modes">
-            {RAG_MODES.map(m => (
-              <button
-                key={m.value}
-                className={`rag-mode-btn ${ragMode === m.value ? 'active' : ''}`}
-                onClick={() => setRagMode(m.value)}
+            <label className="label">ID del paciente (opcional)</label>
+            <input
+              className="input"
+              placeholder="UUID del paciente asignado…"
+              value={patientId}
+              onChange={e => setPatientId(e.target.value)}
+            />
+            <p style={{fontSize:'0.7rem',color:'var(--text-4)',marginTop:'0.375rem'}}>
+              Habilita acceso a datos clínicos y reportes del paciente
+            </p>
+
+            {/* Collapsible: configuración avanzada */}
+            <button
+              onClick={() => setShowAdvanced(v => !v)}
+              style={{
+                marginTop:'0.875rem',display:'flex',alignItems:'center',gap:'0.4rem',
+                background:'none',border:'none',cursor:'pointer',padding:'0.25rem 0',
+                color:'var(--text-4)',fontSize:'0.68rem',width:'100%',
+              }}
+            >
+              <svg
+                width="10" height="10" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2"
+                style={{transform: showAdvanced ? 'rotate(90deg)' : 'none', transition:'transform 0.2s'}}
               >
-                <span className="rag-mode-name">{m.label}</span>
-                <span className="rag-mode-desc">{m.desc}</span>
-              </button>
-            ))}
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+              Configuración avanzada
+            </button>
+
+            {showAdvanced && (
+              <div style={{marginTop:'0.5rem'}}>
+                <label className="label">Modo RAG</label>
+                <div className="rag-modes">
+                  {RAG_MODES.map(m => (
+                    <button
+                      key={m.value}
+                      className={`rag-mode-btn ${ragMode === m.value ? 'active' : ''}`}
+                      onClick={() => setRagMode(m.value)}
+                    >
+                      <span className="rag-mode-name">{m.label}</span>
+                      <span className="rag-mode-desc">{m.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+        )}
 
-          <label className="label" style={{marginTop:'1rem'}}>Patient ID (opcional)</label>
-          <input
-            className="input"
-            placeholder="UUID del paciente…"
-            value={patientId}
-            onChange={e => setPatientId(e.target.value)}
-          />
-          <p style={{fontSize:'0.7rem',color:'var(--text-4)',marginTop:'0.375rem'}}>
-            Habilita acceso a datos FHIR y memoria de largo plazo
-          </p>
-        </div>
-
-        <div className="agent-sidebar-section">
-          <h4 style={{color:'var(--text-2)',marginBottom:'0.625rem'}}>Estado del índice</h4>
-          {indexStatus ? (
-            <div className="index-status">
-              <div className="index-stat">
-                <span className="dot dot-low" />
-                <span>{indexStatus.chunks} chunks indexados</span>
+        {!isAdmin && (
+          <div className="agent-sidebar-section">
+            <h4 style={{color:'var(--text-2)',marginBottom:'0.625rem'}}>Estado del índice</h4>
+            {indexStatus ? (
+              <div className="index-status">
+                <div className="index-stat">
+                  <span className="dot dot-low" />
+                  <span>{indexStatus.chunks} chunks indexados</span>
+                </div>
+                <div className="index-stat">
+                  <span className={`dot ${indexStatus.has_faiss ? 'dot-low' : 'dot-high'}`} />
+                  <span>FAISS {indexStatus.has_faiss ? 'activo' : 'no disponible'}</span>
+                </div>
+                <div className="index-stat">
+                  <span className={`dot ${indexStatus.has_bm25 ? 'dot-low' : 'dot-high'}`} />
+                  <span>BM25 {indexStatus.has_bm25 ? 'activo' : 'no disponible'}</span>
+                </div>
               </div>
-              <div className="index-stat">
-                <span className={`dot ${indexStatus.has_faiss ? 'dot-low' : 'dot-high'}`} />
-                <span>FAISS {indexStatus.has_faiss ? 'activo' : 'no disponible'}</span>
-              </div>
-              <div className="index-stat">
-                <span className={`dot ${indexStatus.has_bm25 ? 'dot-low' : 'dot-high'}`} />
-                <span>BM25 {indexStatus.has_bm25 ? 'activo' : 'no disponible'}</span>
-              </div>
-            </div>
-          ) : (
-            <div style={{color:'var(--text-4)',fontSize:'0.75rem'}}>Verificando…</div>
-          )}
-        </div>
+            ) : (
+              <div style={{color:'var(--text-4)',fontSize:'0.75rem'}}>Verificando…</div>
+            )}
+          </div>
+        )}
 
         <RagasPanel report={ragasReport} onRun={runRagas} running={ragasRunning} />
 
-        {sessionId && (
+        {!isAdmin && sessionId && (
           <div className="agent-sidebar-section">
             <div style={{display:'flex',gap:'0.5rem',alignItems:'center',justifyContent:'space-between'}}>
               <span style={{fontSize:'0.72rem',color:'var(--text-3)'}}>Sesión activa</span>
@@ -331,95 +363,123 @@ export default function AgentView() {
           </div>
         )}
 
-        <div className="agent-sidebar-section">
-          <div className="alert alert-warning" style={{fontSize:'0.72rem'}}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Uso clínico de apoyo. No reemplaza criterio médico.
+        {!isAdmin && (
+          <div className="agent-sidebar-section">
+            <div className="alert alert-warning" style={{fontSize:'0.72rem'}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Uso clínico de apoyo. No reemplaza criterio médico.
+            </div>
           </div>
-        </div>
+        )}
       </aside>
 
-      {/* Chat area */}
-      <div className="agent-chat">
-        <div className="chat-header">
-          <div>
-            <h2 style={{color:'var(--text-1)'}}>Agente RAG Clínico</h2>
-            <p style={{fontSize:'0.75rem',color:'var(--text-3)'}}>
-              FAISS + BM25 híbrido · Anti-injection activo · PII masking
-            </p>
+      {/* Chat area — médicos only; admins see a notice */}
+      {isAdmin ? (
+        <div className="agent-chat">
+          <div className="chat-header">
+            <div>
+              <h2 style={{color:'var(--text-1)'}}>Agente RAG Clínico</h2>
+              <p style={{fontSize:'0.75rem',color:'var(--text-3)'}}>
+                Panel de administración — solo lectura
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2 items-center">
-            <span className="badge badge-purple">{RAG_MODES.find(m => m.value === ragMode)?.label}</span>
-            <span className="badge badge-info">Cloudflare WAF</span>
-          </div>
-        </div>
-
-        <div className="chat-messages">
-          {messages.length === 0 && (
+          <div className="chat-messages">
             <div className="chat-empty">
               <div className="chat-empty-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" opacity="0.4">
-                  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 </svg>
               </div>
-              <p style={{color:'var(--text-3)',maxWidth:360,textAlign:'center',fontSize:'0.875rem'}}>
-                Pregunta sobre diabetes, retinopatía diabética, resultados de modelos ML/DL o datos de pacientes.
+              <p style={{color:'var(--text-3)',maxWidth:380,textAlign:'center',fontSize:'0.875rem'}}>
+                El chat del agente es exclusivo para médicos. Como administrador puede consultar los resultados de la Evaluación RAGAS en el panel lateral.
               </p>
-              <div className="suggested-questions">
-                {SUGGESTED.map(q => (
-                  <button key={q} className="suggested-btn" onClick={() => sendMessage(q)}>
-                    {q}
-                  </button>
-                ))}
-              </div>
             </div>
-          )}
+          </div>
+        </div>
+      ) : (
+        <div className="agent-chat">
+          <div className="chat-header">
+            <div>
+              <h2 style={{color:'var(--text-1)'}}>Agente RAG Clínico</h2>
+              <p style={{fontSize:'0.75rem',color:'var(--text-3)'}}>
+                Agentic RAG · Anti-injection activo · PII masking
+              </p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <span className="badge badge-purple">{RAG_MODES.find(m => m.value === ragMode)?.label}</span>
+              <span className="badge badge-info">Cloudflare WAF</span>
+            </div>
+          </div>
 
-          {messages.map((msg, i) => <Message key={i} msg={msg} />)}
-
-          {loading && (
-            <div className="msg msg--agent">
-              <div className="msg-avatar">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/></svg>
-              </div>
-              <div className="msg-content">
-                <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
-                  <div className="typing-dots"><span/><span/><span/></div>
-                  <span style={{fontSize:'0.7rem',color:'var(--text-4)',fontVariantNumeric:'tabular-nums'}}>
-                    {(elapsed / 1000).toFixed(1)}s
-                  </span>
+          <div className="chat-messages">
+            {messages.length === 0 && (
+              <div className="chat-empty">
+                <div className="chat-empty-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" opacity="0.4">
+                    <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+                  </svg>
+                </div>
+                <p style={{color:'var(--text-3)',maxWidth:360,textAlign:'center',fontSize:'0.875rem'}}>
+                  Pregunta sobre diabetes, retinopatía diabética, resultados de modelos ML/DL o datos de pacientes.
+                </p>
+                <div className="suggested-questions">
+                  {SUGGESTED.map(q => (
+                    <button key={q} className="suggested-btn" onClick={() => sendMessage(q)}>
+                      {q}
+                    </button>
+                  ))}
                 </div>
               </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        <div className="chat-input-area">
-          <textarea
-            ref={inputRef}
-            className="chat-input"
-            placeholder="Consulta clínica… (Enter para enviar, Shift+Enter para nueva línea)"
-            value={input}
-            rows={2}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
-            }}
-          />
-          <button
-            className="btn btn-primary chat-send"
-            onClick={() => sendMessage()}
-            disabled={loading || !input.trim()}
-          >
-            {loading ? <div className="spinner" /> : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
             )}
-          </button>
+
+            {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+
+            {loading && (
+              <div className="msg msg--agent">
+                <div className="msg-avatar">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/></svg>
+                </div>
+                <div className="msg-content">
+                  <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+                    <div className="typing-dots"><span/><span/><span/></div>
+                    <span style={{fontSize:'0.7rem',color:'var(--text-4)',fontVariantNumeric:'tabular-nums'}}>
+                      {(elapsed / 1000).toFixed(1)}s
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          <div className="chat-input-area">
+            <textarea
+              ref={inputRef}
+              className="chat-input"
+              placeholder="Consulta clínica… (Enter para enviar, Shift+Enter para nueva línea)"
+              value={input}
+              rows={2}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
+              }}
+            />
+            <button
+              className="btn btn-primary chat-send"
+              onClick={() => sendMessage()}
+              disabled={loading || !input.trim()}
+            >
+              {loading ? <div className="spinner" /> : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -228,7 +228,14 @@ async def create_patient_external(
     full_name = name_entry.get("text") or (
         " ".join(name_entry.get("given", [])) + " " + name_entry.get("family", "")
     ).strip()
-    birth_date = body.get("birthDate")
+    birth_date_str = body.get("birthDate")
+    birth_date = None
+    if birth_date_str:
+        try:
+            from datetime import date as _date
+            birth_date = _date.fromisoformat(birth_date_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="birthDate inválido, use formato YYYY-MM-DD")
 
     # Extraer identifier FHIR R4 (ej. CC, TI, PA)
     doc_number, doc_type = None, "CC"
@@ -286,7 +293,7 @@ async def create_patient_external(
         "id": str(row["id"]),
         "meta": {"lastUpdated": row["created_at"].isoformat()},
         "name": [{"text": full_name}],
-        "birthDate": birth_date,
+        "birthDate": birth_date_str,
         "identifier": [
             {
                 "system": f"https://www.datos.gov.co/d/{doc_type.lower()}",

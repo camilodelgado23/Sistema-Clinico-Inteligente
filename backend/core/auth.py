@@ -16,7 +16,7 @@ from typing import Optional
 
 from core.config import settings, get_db
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 # ── Token blacklist (in-memory; swap for Redis in production) ────────────────

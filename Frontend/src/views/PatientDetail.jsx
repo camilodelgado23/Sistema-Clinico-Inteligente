@@ -49,6 +49,66 @@ const RISK_COLORS = {
 
 const TABS = ['Datos', 'Observaciones', 'Imágenes', 'Análisis IA', 'Reportes']
 
+// ── Bloque métricas DL (multimodal) — mismo formato que SHAP ─────────────────
+function DlMetadataSection({ dl, ml }) {
+  if (!dl) return null
+  const RCOLORS = { LOW:'#22c55e', MEDIUM:'#f59e0b', HIGH:'#f97316', CRITICAL:'#dc2626' }
+  const chartData = dl.probabilities
+    ? Object.entries(dl.probabilities)
+        .map(([name, value]) => ({ name, value: Math.round(value * 10000) / 10000 }))
+        .sort((a, b) => b.value - a.value)
+    : []
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
+      {/* Scores — mismo estilo que la sección de Score grande del reporte */}
+      <div style={{display:'flex',gap:'2rem',flexWrap:'wrap'}}>
+        {ml && (
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:'1.5rem',fontWeight:700,color:'var(--cyan)'}}>
+              {ml.risk_category}
+              {ml.risk_score!=null&&<span style={{fontSize:'1rem',fontWeight:500,marginLeft:6,color:'var(--text-secondary)'}}>
+                {(ml.risk_score*100).toFixed(1)}%
+              </span>}
+            </div>
+            <div style={{color:'var(--text-tertiary)',fontSize:'0.8rem'}}>Modelo ML</div>
+          </div>
+        )}
+        <div style={{textAlign:'center'}}>
+          <div style={{fontSize:'1.5rem',fontWeight:700,color:RCOLORS[dl.risk_category]||'var(--text-primary)'}}>
+            {dl.risk_category}
+            {dl.risk_score!=null&&<span style={{fontSize:'1rem',fontWeight:500,marginLeft:6,color:'var(--text-secondary)'}}>
+              {(dl.risk_score*100).toFixed(1)}%
+            </span>}
+          </div>
+          <div style={{color:'var(--text-tertiary)',fontSize:'0.8rem'}}>Modelo DL</div>
+        </div>
+        {dl.class_name && (
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:'1.25rem',fontWeight:600,color:'var(--text-primary)'}}>{dl.class_name}</div>
+            <div style={{color:'var(--text-tertiary)',fontSize:'0.8rem'}}>Clase predicha</div>
+          </div>
+        )}
+      </div>
+
+      {/* Probabilidades por clase — BarChart idéntico al de SHAP */}
+      {chartData.length > 0 && (
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={chartData} layout="vertical" margin={{top:4,right:56,left:110,bottom:4}}>
+            <XAxis type="number" domain={[0,1]} tickFormatter={v=>`${(v*100).toFixed(0)}%`}
+              tick={{fill:'var(--text-tertiary)',fontSize:11}}/>
+            <YAxis dataKey="name" type="category" tick={{fill:'var(--text-secondary)',fontSize:12}}/>
+            <Tooltip contentStyle={{background:'var(--surface-2)',border:'1px solid var(--border-subtle)',
+              color:'var(--text-primary)',borderRadius:8}}
+              formatter={v=>[`${(v*100).toFixed(1)}%`,'Probabilidad']}/>
+            <Bar dataKey="value" radius={[0,4,4,0]} fill="#a78bfa"/>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  )
+}
+
 // ── Modal alerta crítica ──────────────────────────────────────────────────────
 function CriticalModal({ report, onClose }) {
   const [action, setAction]       = useState(null)
@@ -467,6 +527,7 @@ function TabAnalisis({ patientId, onCritical }) {
 
   const shapData = result?.shap_values
     ? Object.entries(result.shap_values)
+        .filter(([k]) => !k.startsWith('_'))
         .map(([k, v]) => {
           const name = LOINC_NAMES[k] || FEATURE_INDEX_NAMES[Number(k)] || k
           return { name, value: Math.abs(Number(v)), raw: Number(v) }
@@ -566,6 +627,16 @@ function TabAnalisis({ patientId, onCritical }) {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {(result.dl_metadata || result.shap_values?._dl) && (
+            <div className="card" style={{borderLeft:'3px solid #a78bfa'}}>
+              <div className="card-header"><span className="card-icon">🧠</span><h3>Modelo DL — Retinopatía</h3></div>
+              <DlMetadataSection
+                dl={result.dl_metadata || result.shap_values?._dl}
+                ml={result.ml_metadata || result.shap_values?._ml}
+              />
             </div>
           )}
 
@@ -806,6 +877,7 @@ function TabReportes({ patientId, role, onRefreshPending }) {
           : null
         const shapData = rawShap
           ? Object.entries(rawShap)
+              .filter(([k]) => !k.startsWith('_'))
               .map(([k, v]) => ({
                 name:  LOINC_NAMES[k] || FEATURE_INDEX_NAMES[Number(k)] || k,
                 value: Math.abs(Number(v)),
@@ -814,6 +886,8 @@ function TabReportes({ patientId, role, onRefreshPending }) {
               .sort((a,b) => b.value - a.value)
               .slice(0, 8)
           : []
+        const dlMeta = detail.dl_metadata || rawShap?._dl || null
+        const mlMeta = detail.ml_metadata || rawShap?._ml || null
 
         return (
           <div key={rep.id} className="card" style={{
@@ -903,6 +977,17 @@ function TabReportes({ patientId, role, onRefreshPending }) {
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* DL metadata — multimodal */}
+                {dlMeta && (
+                  <div style={{borderLeft:'3px solid #a78bfa',paddingLeft:'1rem'}}>
+                    <div style={{fontSize:'0.8rem',color:'var(--text-tertiary)',fontWeight:600,
+                      marginBottom:'0.75rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>
+                      🧠 Modelo DL — Retinopatía
+                    </div>
+                    <DlMetadataSection dl={dlMeta} ml={mlMeta} />
                   </div>
                 )}
 
@@ -1116,7 +1201,7 @@ function CreatePatientModal({ onClose, onCreated }) {
 export default function PatientDetail() {
   const { id }     = useParams()
   const navigate   = useNavigate()
-  const { role: userRole } = useAuthStore()
+  const { role: userRole, setPendingReports } = useAuthStore()
   const user = { role: userRole }  // compatibilidad con referencias a user?.role
 
   const [patient, setPatient]     = useState(null)
@@ -1126,15 +1211,20 @@ export default function PatientDetail() {
   const [closing, setClosing]     = useState(false)
   const [criticalReport, setCriticalReport] = useState(null)
 
+  // Limpiar pendingReports global al desmontar
+  useEffect(() => () => setPendingReports(0), [setPendingReports])
+
   const loadPatient = useCallback(async () => {
     try {
       const { data } = await fhirAPI.getPatient(id)
       setPatient(data)
-      setPending(data.pending_reports ?? 0)
+      const n = data.pending_reports ?? 0
+      setPending(n)
+      setPendingReports(n)
     } catch(e) {
       if (e.response?.status === 404) navigate('/dashboard')
     } finally { setLoading(false) }
-  }, [id, navigate])
+  }, [id, navigate, setPendingReports])
 
   useEffect(()=>{loadPatient()},[loadPatient])
 

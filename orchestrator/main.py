@@ -110,30 +110,44 @@ async def save_risk_report(patient_id: str, model_type: str,
     risk_category = result.get("risk_category", "LOW")
     is_critical   = result.get("is_critical", False)
 
-    # ✅ SHAP y Grad-CAM en campos separados — ya no se mezclan
     shap_values  = result.get("shap_values")
     gradcam_url  = result.get("gradcam_url")
     original_url = result.get("original_url")
 
+    aes_key = os.getenv("AES_KEY", "")
+    if not aes_key:
+        raise RuntimeError("AES_KEY no configurado — no se puede cifrar el reporte de riesgo")
+
     async with pool.acquire() as conn:
-        aes_key = os.getenv("AES_KEY", "changeme_32_char_key_here______")
-        enc_row = await conn.fetchrow(
+        # Cifrar diagnóstico completo: score + categoría
+        pred_json = json.dumps({"score": float(risk_score), "category": risk_category})
+        enc_pred_row = await conn.fetchrow(
             "SELECT pgp_sym_encrypt($1, $2) AS enc",
-            str(risk_score), aes_key,
+            pred_json, aes_key,
         )
+
+        # Cifrar SHAP values si existen
+        enc_shap = None
+        if shap_values is not None:
+            enc_shap_row = await conn.fetchrow(
+                "SELECT pgp_sym_encrypt($1, $2) AS enc",
+                json.dumps(shap_values), aes_key,
+            )
+            enc_shap = enc_shap_row["enc"]
+
         row = await conn.fetchrow(
             """INSERT INTO risk_reports
                (patient_id, model_type, risk_score, risk_category,
-                is_critical, prediction_enc, shap_json,
+                is_critical, prediction_enc, shap_json, shap_enc,
                 gradcam_url, original_url, signed_by)
-               VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
+               VALUES ($1::uuid, $2, NULL, NULL, $3, $4, NULL, $5, $6, $7, NULL)
                RETURNING id""",
-            patient_id, model_type, risk_score, risk_category,
+            patient_id, model_type,
             is_critical,
-            enc_row["enc"],
-            json.dumps(shap_values) if shap_values is not None else None,
-            gradcam_url,   # ✅ columna propia
-            original_url,  # ✅ columna propia
+            enc_pred_row["enc"],
+            enc_shap,
+            gradcam_url,
+            original_url,
         )
         await conn.execute(
             """INSERT INTO audit_log (user_id, role, action, resource_type,
@@ -206,13 +220,26 @@ async def run_multimodal(task_id: str, patient_id: str, requested_by: str):
                 ml_result.get("risk_score", 0) * 0.5 +
                 dl_result.get("risk_score", 0) * 0.5
             )
+            # Combinar SHAP del ML con metadata del DL en un mismo JSON.
+            # Las claves _dl y _ml son metadata — el frontend las separa del SHAP.
+            shap_combined = {**(ml_result.get("shap_values") or {})}
+            shap_combined["_dl"] = {
+                "risk_score":    dl_result.get("risk_score"),
+                "risk_category": dl_result.get("risk_category"),
+                "class_name":    dl_result.get("class_name"),
+                "probabilities": dl_result.get("probabilities"),
+            }
+            shap_combined["_ml"] = {
+                "risk_score":    ml_result.get("risk_score"),
+                "risk_category": ml_result.get("risk_category"),
+            }
             fused = {
                 "risk_score":    round(combined_score, 4),
                 "risk_category": _score_to_category(combined_score),
                 "is_critical":   combined_score >= 0.85,
-                "shap_values":   ml_result.get("shap_values"),   # ✅ SHAP del ML
-                "gradcam_url":   dl_result.get("gradcam_url"),   # ✅ Grad-CAM del DL
-                "original_url":  dl_result.get("original_url"),  # ✅ imagen original
+                "shap_values":   shap_combined,
+                "gradcam_url":   dl_result.get("gradcam_url"),
+                "original_url":  dl_result.get("original_url"),
             }
             rid = await save_risk_report(patient_id, "MULTIMODAL", requested_by, fused)
             await set_status(task_id, "DONE", result_id=rid)
@@ -257,17 +284,24 @@ async def get_task_status(task_id: str):
     para que el frontend no necesite hacer un segundo request.
     """
     pool = await get_pool()
+    aes_key = os.getenv("AES_KEY", "")
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """SELECT
                  iq.id, iq.patient_id, iq.model_type, iq.status,
                  iq.created_at, iq.completed_at, iq.result_id, iq.error_msg,
                  rr.risk_score, rr.risk_category, rr.is_critical,
-                 rr.shap_json, rr.gradcam_url, rr.original_url
+                 rr.shap_json, rr.gradcam_url, rr.original_url,
+                 CASE WHEN rr.prediction_enc IS NOT NULL AND $2 != ''
+                      THEN pgp_sym_decrypt(rr.prediction_enc, $2)
+                      ELSE NULL END AS pred_decrypted,
+                 CASE WHEN rr.shap_enc IS NOT NULL AND $2 != ''
+                      THEN pgp_sym_decrypt(rr.shap_enc, $2)
+                      ELSE NULL END AS shap_decrypted
                FROM inference_queue iq
                LEFT JOIN risk_reports rr ON rr.id = iq.result_id
                WHERE iq.id = $1::uuid""",
-            task_id,
+            task_id, aes_key,
         )
     if not row:
         raise HTTPException(404, "Tarea no encontrada")
@@ -275,19 +309,49 @@ async def get_task_status(task_id: str):
     # Construir resultado cuando la tarea está completa
     result = None
     if row["status"] == "DONE" and row["result_id"]:
-        shap_values = None
-        if row["shap_json"]:
+        # Descifrar diagnóstico desde prediction_enc (fuente autoritativa)
+        pred_raw = row["pred_decrypted"]
+        if pred_raw:
+            try:
+                pred = json.loads(pred_raw)
+                risk_score_val = pred.get("score")
+                risk_category_val = pred.get("category", "LOW")
+            except Exception:
+                risk_score_val = float(row["risk_score"]) if row["risk_score"] is not None else None
+                risk_category_val = row["risk_category"]
+        else:
+            risk_score_val = float(row["risk_score"]) if row["risk_score"] is not None else None
+            risk_category_val = row["risk_category"]
+
+        # Descifrar SHAP desde shap_enc (fuente autoritativa)
+        shap_raw = row["shap_decrypted"]
+        if shap_raw:
+            try:
+                shap_values = json.loads(shap_raw)
+            except Exception:
+                shap_values = None
+        elif row["shap_json"]:
             try:
                 shap_values = json.loads(row["shap_json"])
             except Exception:
                 shap_values = row["shap_json"]
+        else:
+            shap_values = None
+
+        dl_metadata = None
+        ml_metadata = None
+        if isinstance(shap_values, dict):
+            dl_metadata = shap_values.get("_dl")
+            ml_metadata = shap_values.get("_ml")
 
         result = {
             "id":            str(row["result_id"]),
-            "risk_score":    float(row["risk_score"]) if row["risk_score"] is not None else None,
-            "risk_category": row["risk_category"],
+            "risk_score":    risk_score_val,
+            "risk_category": risk_category_val,
             "is_critical":   row["is_critical"],
             "shap_values":   shap_values,
+            "dl_metadata":   dl_metadata,
+            "ml_metadata":   ml_metadata,
             "gradcam_url":   row["gradcam_url"],
             "original_url":  row["original_url"],
             "model_type":    row["model_type"],

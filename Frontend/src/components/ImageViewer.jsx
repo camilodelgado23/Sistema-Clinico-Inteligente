@@ -3,10 +3,10 @@
 import { useState } from 'react'
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
 
-// ✅ FIX: reemplaza host interno docker por localhost accesible desde el browser
 function fixMinioUrl(url) {
   if (!url) return url;
-  return url.replace("http://minio:9000", "http://localhost:9000");
+  return url.replace(/https?:\/\/minio:9000/g, '/minio')
+            .replace(/https?:\/\/localhost:9000/g, '/minio')
 }
 
 export default function ImageViewer({ src, alt, media, gradcamUrl: gradcamProp }) {

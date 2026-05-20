@@ -9,12 +9,10 @@ function getAuthHeaders() {
   return { Authorization: `Bearer ${token}` };
 }
 
-// ✅ FIX: reemplaza el host interno de MinIO por localhost:9000
-// El backend firma con minio:9000 (host interno docker) pero el browser
-// necesita acceder por localhost:9000 (puerto expuesto en docker-compose)
 function fixMinioUrl(url) {
   if (!url) return url;
-  return url.replace("http://minio:9000", "http://localhost:9000");
+  return url.replace(/https?:\/\/minio:9000/g, '/minio')
+            .replace(/https?:\/\/localhost:9000/g, '/minio')
 }
 
 export default function PatientImages({ patientId, canUpload = false }) {

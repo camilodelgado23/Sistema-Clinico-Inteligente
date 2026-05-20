@@ -1,17 +1,19 @@
 import { create } from 'zustand'
 
 export const useAuthStore = create((set, get) => ({
-  token:  localStorage.getItem('token') || null,
-  role:   (localStorage.getItem('role') || '').toUpperCase() || null,
-  userId: localStorage.getItem('userId') || null,
+  token:  sessionStorage.getItem('token') || null,
+  role:   (sessionStorage.getItem('role') || '').toUpperCase() || null,
+  userId: sessionStorage.getItem('userId') || null,
   needsHabeas: false,
+  pendingReports: 0,
+  setPendingReports: (n) => set({ pendingReports: n }),
 
   setAuth: ({ access_token, role, user_id, needs_habeas_data }) => {
     const normalizedRole = role?.toUpperCase()
 
-    localStorage.setItem('token', access_token)
-    localStorage.setItem('role', normalizedRole)
-    localStorage.setItem('userId', user_id)
+    sessionStorage.setItem('token', access_token)
+    sessionStorage.setItem('role', normalizedRole)
+    sessionStorage.setItem('userId', user_id)
 
     set({
       token: access_token,
@@ -22,9 +24,9 @@ export const useAuthStore = create((set, get) => ({
   },
 
   clearAuth: () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('role')
-    localStorage.removeItem('userId')
+    sessionStorage.removeItem('token')
+    sessionStorage.removeItem('role')
+    sessionStorage.removeItem('userId')
 
     set({
       token: null,

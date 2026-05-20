@@ -1015,20 +1015,45 @@ function AssignmentsSection() {
     } catch (e) { alert(e.response?.data?.detail || 'Error al quitar asignación') }
   }
 
-  const assignedToSelected = new Set(
-    form.doctor_id
-      ? assignments.filter(a => a.doctor_id === form.doctor_id).map(a => a.patient_id)
-      : []
+  // mapa patient_id → médico actual asignado
+  const assignedDoctorByPatient = Object.fromEntries(
+    assignments.map(a => [a.patient_id, a.doctor_username])
   )
+
+  const selectedCurrentDoctor = form.patient_id
+    ? assignedDoctorByPatient[form.patient_id]
+    : null
+  const isReassign = selectedCurrentDoctor && form.doctor_id &&
+    assignments.find(a => a.patient_id === form.patient_id)?.doctor_id !== form.doctor_id
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       <div className="card">
         <div className="card-header">
           <span className="card-icon">🔗</span>
-          <h3>Nueva asignación</h3>
+          <h3>Asignar paciente a médico</h3>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label className="form-label">Paciente</label>
+            <select className="input" value={form.patient_id}
+              onChange={e => setForm(f => ({ ...f, patient_id: e.target.value }))}>
+              <option value="">— Seleccionar paciente —</option>
+              {patients.map(p => {
+                const currentDoc = assignedDoctorByPatient[p.id]
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{currentDoc ? ` (${currentDoc})` : ' (sin asignar)'}
+                  </option>
+                )
+              })}
+            </select>
+            {selectedCurrentDoctor && (
+              <p style={{ fontSize: '0.7rem', color: 'var(--text-4)', marginTop: '0.25rem' }}>
+                Médico actual: <strong style={{ color: 'var(--cyan)' }}>{selectedCurrentDoctor}</strong>
+              </p>
+            )}
+          </div>
           <div style={{ flex: 1, minWidth: 200 }}>
             <label className="form-label">Médico</label>
             <select className="input" value={form.doctor_id}
@@ -1039,26 +1064,22 @@ function AssignmentsSection() {
               ))}
             </select>
           </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <label className="form-label">Paciente</label>
-            <select className="input" value={form.patient_id}
-              onChange={e => setForm(f => ({ ...f, patient_id: e.target.value }))}>
-              <option value="">— Seleccionar paciente —</option>
-              {patients.map(p => (
-                <option key={p.id} value={p.id}
-                  disabled={assignedToSelected.has(p.id)}
-                  style={assignedToSelected.has(p.id) ? { color: 'var(--text-tertiary)' } : {}}>
-                  {p.name}{assignedToSelected.has(p.id) ? ' (ya asignado)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
           <button className="btn btn-primary"
             disabled={saving || !form.patient_id || !form.doctor_id}
             onClick={handleAssign}>
-            {saving ? 'Asignando…' : '+ Asignar'}
+            {saving ? 'Guardando…' : isReassign ? '↺ Reasignar' : '+ Asignar'}
           </button>
         </div>
+        {isReassign && (
+          <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--warning)',
+            display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            Este paciente ya tiene médico asignado. Confirmar reasignará al nuevo médico.
+          </div>
+        )}
         {error   && <div style={{ marginTop: '0.5rem', color: 'var(--danger)', fontSize: '0.85rem' }}>{error}</div>}
         {success && <div style={{ marginTop: '0.5rem', color: 'var(--success)', fontSize: '0.85rem' }}>✅ {success}</div>}
       </div>
@@ -1680,49 +1701,67 @@ function MetricBar({ label, value, max = 1, color = '#38bdf8' }) {
 
 function EpochChart({ epochs }) {
   if (!epochs || epochs.length === 0) return null
-  const W = 340, H = 100, pad = { t: 8, r: 8, b: 24, l: 32 }
+  const W = 340, H = 120, pad = { t: 8, r: 8, b: 24, l: 32 }
   const iW = W - pad.l - pad.r
   const iH = H - pad.t - pad.b
-  const vals = epochs.map(e => e.val_f1)
-  const minV = Math.min(...vals) - 0.02
-  const maxV = Math.max(...vals) + 0.01
+  const hasAcc = epochs.some(e => e.val_acc != null)
+  const allVals = [...epochs.map(e => e.val_f1), ...(hasAcc ? epochs.map(e => e.val_acc) : [])]
+  const minV = Math.min(...allVals) - 0.02
+  const maxV = Math.max(...allVals) + 0.01
   const x = i => pad.l + (i / (epochs.length - 1)) * iW
   const y = v => pad.t + iH - ((v - minV) / (maxV - minV)) * iH
-  const pathD = epochs.map((e, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(e.val_f1).toFixed(1)}`).join(' ')
-  const areaD = `${pathD} L${x(epochs.length - 1).toFixed(1)},${(pad.t + iH).toFixed(1)} L${pad.l},${(pad.t + iH).toFixed(1)} Z`
-  const bestI = vals.indexOf(Math.max(...vals))
+  const pathF1 = epochs.map((e, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(e.val_f1).toFixed(1)}`).join(' ')
+  const pathAcc = hasAcc ? epochs.map((e, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(e.val_acc).toFixed(1)}`).join(' ') : null
+  const areaD = `${pathF1} L${x(epochs.length - 1).toFixed(1)},${(pad.t + iH).toFixed(1)} L${pad.l},${(pad.t + iH).toFixed(1)} Z`
+  const f1vals = epochs.map(e => e.val_f1)
+  const bestI = f1vals.indexOf(Math.max(...f1vals))
   return (
-    <svg width={W} height={H} style={{ overflow: 'visible', display: 'block', maxWidth: '100%' }}>
-      {/* grid lines */}
-      {[0, 0.5, 1].map(r => {
-        const yy = pad.t + iH - r * iH
-        return <line key={r} x1={pad.l} x2={pad.l + iW} y1={yy} y2={yy} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
-      })}
-      {/* area fill */}
-      <defs>
-        <linearGradient id="epGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      <path d={areaD} fill="url(#epGrad)" />
-      {/* line */}
-      <path d={pathD} fill="none" stroke="#38bdf8" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-      {/* best epoch dot */}
-      <circle cx={x(bestI)} cy={y(vals[bestI])} r={4} fill="#38bdf8" stroke="#0f1923" strokeWidth={2} />
-      {/* x-axis epoch labels */}
-      {epochs.filter((_, i) => epochs.length <= 10 || i % 2 === 0).map((e, _, arr) => {
-        const origI = epochs.indexOf(e)
-        return (
-          <text key={e.epoch} x={x(origI)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={9}>
-            {e.epoch}
-          </text>
-        )
-      })}
-      {/* y-axis label */}
-      <text x={pad.l - 4} y={pad.t + iH / 2} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={9}
-        transform={`rotate(-90,${pad.l - 18},${pad.t + iH / 2})`}>F1</text>
-    </svg>
+    <div>
+      <svg width={W} height={H} style={{ overflow: 'visible', display: 'block', maxWidth: '100%' }}>
+        {[0, 0.5, 1].map(r => {
+          const yy = pad.t + iH - r * iH
+          return <line key={r} x1={pad.l} x2={pad.l + iW} y1={yy} y2={yy} stroke="rgba(255,255,255,0.06)" strokeWidth={1} />
+        })}
+        <defs>
+          <linearGradient id="epGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.01" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill="url(#epGrad)" />
+        {pathAcc && (
+          <path d={pathAcc} fill="none" stroke="#34d399" strokeWidth={1.5} strokeDasharray="4 2" strokeLinejoin="round" strokeLinecap="round" />
+        )}
+        <path d={pathF1} fill="none" stroke="#38bdf8" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={x(bestI)} cy={y(f1vals[bestI])} r={4} fill="#38bdf8" stroke="#0f1923" strokeWidth={2} />
+        {epochs.filter((_, i) => epochs.length <= 10 || i % 2 === 0).map((e) => {
+          const origI = epochs.indexOf(e)
+          return (
+            <text key={e.epoch} x={x(origI)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={9}>
+              {e.epoch}
+            </text>
+          )
+        })}
+        <text x={pad.l - 4} y={pad.t + iH / 2} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={9}
+          transform={`rotate(-90,${pad.l - 18},${pad.t + iH / 2})`}>val</text>
+      </svg>
+      {hasAcc && (
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.35rem' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.68rem', color: '#38bdf8' }}>
+            <span style={{ display: 'inline-block', width: 16, height: 2, background: '#38bdf8', borderRadius: 1 }} />
+            F1
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.68rem', color: '#34d399' }}>
+            <span style={{ display: 'inline-block', width: 16, height: 2, background: '#34d399', borderRadius: 1, opacity: 0.8 }} />
+            Acc
+          </span>
+          <span style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+            Best F1: <strong style={{ color: '#38bdf8' }}>{(Math.max(...f1vals) * 100).toFixed(1)}%</strong>
+            {hasAcc && <> · Acc: <strong style={{ color: '#34d399' }}>{(epochs[bestI].val_acc * 100).toFixed(1)}%</strong></>}
+          </span>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -1852,6 +1891,12 @@ function ModelsSection() {
             <MetricBar label="Best val F1"          value={dl.best_val_f1        || 0} color="#38bdf8" />
             <MetricBar label="AUC-ROC macro (OvR)"  value={dl.auc_roc_macro      || 0} color="#a78bfa" />
             <MetricBar label="AUC-ROC weighted"      value={dl.auc_roc_weighted   || 0} color="#34d399" />
+            {dl.n_val != null && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(255,255,255,0.04)', borderRadius: 6 }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Muestras de validación</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{dl.n_val.toLocaleString()}</span>
+              </div>
+            )}
           </div>
 
           {dl.epochs?.length > 0 && (

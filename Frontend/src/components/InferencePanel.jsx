@@ -11,6 +11,12 @@ function getAuthHeaders() {
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 
+function fixMinioUrl(url) {
+  if (!url) return url;
+  return url.replace(/https?:\/\/minio:9000/g, '/minio')
+            .replace(/https?:\/\/localhost:9000/g, '/minio');
+}
+
 // ── Mapeo LOINC → nombre legible ──────────────────────────────────────────────
 const LOINC_NAMES = {
   "2339-0":  "Glucosa",
@@ -246,14 +252,33 @@ export default function InferencePanel({ patientId, onNewReport }) {
             <span style={styles.modelTag}>{result.method || modelType}</span>
           </div>
 
-          {/* SHAP values */}
+          {/* SHAP values — filtrar claves de metadata (_dl, _ml) */}
           {result.shap_values && <ShapChart values={result.shap_values} />}
+
+          {/* DL metadata (multimodal) — fallback a shap_values._dl si el endpoint no lo extrae */}
+          {(result.dl_metadata || result.shap_values?._dl) && (
+            <DlMetadataBlock
+              dl={result.dl_metadata || result.shap_values?._dl}
+              ml={result.ml_metadata || result.shap_values?._ml}
+            />
+          )}
 
           {/* Grad-CAM */}
           {result.gradcam_url && (
             <div style={styles.gradcamBox}>
-              <p style={styles.sectionLabel}>Grad-CAM</p>
-              <img src={result.gradcam_url} alt="Grad-CAM" style={styles.gradcam} />
+              <p style={styles.sectionLabel}>Grad-CAM — imagen original vs mapa de atención</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                {result.original_url && (
+                  <div>
+                    <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Original</p>
+                    <img src={fixMinioUrl(result.original_url)} alt="Original" style={styles.gradcam} />
+                  </div>
+                )}
+                <div>
+                  <p style={{ fontSize: 11, color: '#64748b', marginBottom: 4 }}>Grad-CAM</p>
+                  <img src={fixMinioUrl(result.gradcam_url)} alt="Grad-CAM" style={styles.gradcam} />
+                </div>
+              </div>
             </div>
           )}
 
@@ -278,10 +303,72 @@ export default function InferencePanel({ patientId, onNewReport }) {
   );
 }
 
+// ── Componente DL metadata (multimodal) ──────────────────────────────────────
+function DlMetadataBlock({ dl, ml }) {
+  if (!dl) return null;
+  const RISK_COLORS_DL = { LOW: '#22c55e', MEDIUM: '#f59e0b', HIGH: '#f97316', CRITICAL: '#dc2626' };
+  const probs = dl.probabilities ? Object.entries(dl.probabilities).sort((a, b) => b[1] - a[1]) : [];
+  return (
+    <div style={{ ...styles.shapBox, borderLeft: '3px solid #a78bfa' }}>
+      <p style={styles.sectionLabel}>Modelo DL — Retinopatía (EfficientNet-B0)</p>
+
+      {/* Scores — mismo tamaño que el badge de riesgo principal */}
+      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: 12, flexWrap: 'wrap' }}>
+        {ml && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#38bdf8' }}>
+              {ml.risk_category}
+              {ml.risk_score != null && (
+                <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 5, color: '#64748b' }}>
+                  {(ml.risk_score * 100).toFixed(1)}%
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>Modelo ML</div>
+          </div>
+        )}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: RISK_COLORS_DL[dl.risk_category] || '#94a3b8' }}>
+            {dl.risk_category}
+            {dl.risk_score != null && (
+              <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 5, color: '#64748b' }}>
+                {(dl.risk_score * 100).toFixed(1)}%
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: '#64748b' }}>Modelo DL</div>
+        </div>
+        {dl.class_name && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#e2e8f0' }}>{dl.class_name}</div>
+            <div style={{ fontSize: 11, color: '#64748b' }}>Clase predicha</div>
+          </div>
+        )}
+      </div>
+
+      {/* Barras de probabilidad — mismo estilo que SHAP bars */}
+      {probs.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {probs.map(([cls, prob]) => (
+            <div key={cls} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 130, fontSize: 12, color: '#e2e8f0', flexShrink: 0 }}>{cls}</span>
+              <div style={styles.shapBarBg}>
+                <div style={{ ...styles.shapBar, width: `${prob * 100}%`, background: '#a78bfa' }} />
+              </div>
+              <span style={styles.shapVal}>{(prob * 100).toFixed(1)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Componente SHAP bars ──────────────────────────────────────────────────────
 function ShapChart({ values }) {
   if (!values || typeof values !== "object") return null;
   const entries = Object.entries(values)
+    .filter(([k]) => !k.startsWith('_'))  // excluir _dl, _ml
     .map(([k, v]) => ({ name: LOINC_NAMES[k] || k, value: Math.abs(parseFloat(v) || 0) }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);

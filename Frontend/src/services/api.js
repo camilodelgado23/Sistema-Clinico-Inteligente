@@ -6,8 +6,8 @@ import { useAuthStore } from '../store/auth'
 
 const fixMinioUrl = (url) => {
   if (!url) return url
-  return url.replace('http://minio:9000', 'http://localhost:9000')
-            .replace('https://minio:9000', 'http://localhost:9000')
+  return url.replace(/https?:\/\/minio:9000/g, '/minio')
+            .replace(/https?:\/\/localhost:9000/g, '/minio')
 }
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -190,6 +190,12 @@ export const arcoAPI = {
 // ── RAG Agent API ─────────────────────────────────────────────────────────────
 const RAG_BASE = import.meta.env.VITE_RAG_URL || 'http://localhost:8004'
 const ragAxios = axios.create({ baseURL: RAG_BASE })
+
+ragAxios.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
 
 export const ragAPI = {
   chat: (body) =>

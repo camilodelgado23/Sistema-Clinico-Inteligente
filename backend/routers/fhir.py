@@ -6,7 +6,7 @@ All endpoints: doble API-Key (via JWT) + RBAC + audit log + paginación.
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from typing import Optional
-import asyncpg, uuid
+import asyncpg, uuid, json
 from datetime import date, datetime, timedelta
 from core.config import get_db, settings
 from core.auth import require_authenticated, require_medico, require_admin
@@ -53,11 +53,11 @@ def _make_presigned_url(key: str) -> str:
     """
     s3 = boto3.client(
         "s3",
-        endpoint_url="http://localhost:9000",          # host que verá el browser
+        endpoint_url="http://minio:9000",
         aws_access_key_id=settings.MINIO_ACCESS_KEY,
         aws_secret_access_key=settings.MINIO_SECRET_KEY,
         config=Config(signature_version="s3v4"),
-        region_name="us-east-1",                       # MinIO usa us-east-1 por defecto
+        region_name="us-east-1",
     )
     return s3.generate_presigned_url(
         "get_object",
@@ -92,14 +92,16 @@ async def create_patient(
     )
     pid = str(row["id"])
 
-    # ── FIX: auto-asignar el paciente al médico que lo crea ──────────────────
-    # Así el médico que crea el paciente también lo ve en su lista
-    await db.execute(
-        """INSERT INTO patient_assignments (patient_id, doctor_id, assigned_by)
-           VALUES ($1::uuid, $2::uuid, $2::uuid)
-           ON CONFLICT (patient_id, doctor_id) DO NOTHING""",
-        pid, str(user["id"]),
-    )
+    if user["role"] == "MEDICO":
+        await db.execute(
+            """INSERT INTO patient_assignments (patient_id, doctor_id, assigned_by)
+               VALUES ($1::uuid, $2::uuid, $2::uuid)
+               ON CONFLICT (patient_id) DO UPDATE
+                 SET doctor_id = EXCLUDED.doctor_id,
+                     assigned_by = EXCLUDED.assigned_by,
+                     assigned_at = now()""",
+            pid, str(user["id"]),
+        )
 
     await log_audit(db, str(user["id"]), user["role"], "CREATE_PATIENT", "Patient",
                     pid, request.client.host if request.client else None)
@@ -129,17 +131,25 @@ async def list_patients(
         where, params = "WHERE p.deleted_at IS NULL AND p.patient_user_id = $1::uuid", [str(user["id"])]
 
     count_row = await db.fetchrow(f"SELECT COUNT(*) FROM patients p {where}", *params)
+    # AES_KEY se pasa después de los filtros de usuario para descifrar prediction_enc
+    aes_idx = len(params) + 1
+    params_dec = params + [settings.AES_KEY]
     rows = await db.fetch(
         f"""SELECT p.id, p.name, p.birth_date, p.created_at,
                    (SELECT COUNT(*) FROM risk_reports r
                     WHERE r.patient_id = p.id AND r.deleted_at IS NULL AND r.signed_at IS NULL) AS pending_reports,
-                   (SELECT risk_category FROM risk_reports r
+                   (SELECT CASE WHEN r.prediction_enc IS NOT NULL
+                                 THEN pgp_sym_decrypt(r.prediction_enc, ${aes_idx})::json->>'category'
+                                 ELSE r.risk_category END
+                    FROM risk_reports r
                     WHERE r.patient_id = p.id AND r.deleted_at IS NULL
-                    ORDER BY r.created_at DESC LIMIT 1) AS last_risk_category
+                    ORDER BY r.created_at DESC LIMIT 1) AS last_risk_category,
+                   (SELECT COUNT(*) FROM images i
+                    WHERE i.patient_id = p.id AND i.deleted_at IS NULL) AS image_count
             FROM patients p {where}
             ORDER BY p.created_at DESC
-            LIMIT ${len(params)+1} OFFSET ${len(params)+2}""",
-        *params, limit, offset,
+            LIMIT ${len(params_dec)+1} OFFSET ${len(params_dec)+2}""",
+        *params_dec, limit, offset,
     )
     await log_audit(db, str(user["id"]), user["role"], "LIST_PATIENTS", "Patient",
                     None, request.client.host if request.client else None)
@@ -412,11 +422,18 @@ async def list_risk_assessments(
     rows = await db.fetch(
         """SELECT id, patient_id, model_type, risk_score, risk_category,
                   is_critical, shap_json, doctor_action, doctor_notes,
-                  rejection_reason, signed_by, signed_at, created_at
+                  rejection_reason, signed_by, signed_at, created_at,
+                  gradcam_url, original_url,
+                  CASE WHEN prediction_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(prediction_enc, $3)
+                       ELSE NULL END AS pred_decrypted,
+                  CASE WHEN shap_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(shap_enc, $3)
+                       ELSE NULL END AS shap_decrypted
            FROM risk_reports
            WHERE patient_id = $1::uuid AND deleted_at IS NULL
            ORDER BY created_at DESC LIMIT $2""",
-        subject, limit,
+        subject, limit, settings.AES_KEY,
     )
     return {
         "total": len(rows), "limit": limit, "offset": 0,
@@ -434,10 +451,16 @@ async def get_risk_assessment(
         """SELECT id, patient_id, model_type, risk_score, risk_category,
                   is_critical, shap_json, gradcam_url, original_url,
                   doctor_action, doctor_notes,
-                  rejection_reason, signed_by, signed_at, created_at
+                  rejection_reason, signed_by, signed_at, created_at,
+                  CASE WHEN prediction_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(prediction_enc, $2)
+                       ELSE NULL END AS pred_decrypted,
+                  CASE WHEN shap_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(shap_enc, $2)
+                       ELSE NULL END AS shap_decrypted
            FROM risk_reports
            WHERE id = $1::uuid AND deleted_at IS NULL""",
-        rid,
+        rid, settings.AES_KEY,
     )
     if not row:
         raise HTTPException(404, "RiskReport no encontrado")
@@ -485,13 +508,16 @@ async def create_patient_full(
     )
     pid = str(row["id"])
 
-    # ── 2. Auto-asignar al médico que crea el paciente ────────────────────────
-    await db.execute(
-        """INSERT INTO patient_assignments (patient_id, doctor_id, assigned_by)
-           VALUES ($1::uuid, $2::uuid, $2::uuid)
-           ON CONFLICT (patient_id, doctor_id) DO NOTHING""",
-        pid, str(user["id"]),
-    )
+    if user["role"] == "MEDICO":
+        await db.execute(
+            """INSERT INTO patient_assignments (patient_id, doctor_id, assigned_by)
+               VALUES ($1::uuid, $2::uuid, $2::uuid)
+               ON CONFLICT (patient_id) DO UPDATE
+                 SET doctor_id = EXCLUDED.doctor_id,
+                     assigned_by = EXCLUDED.assigned_by,
+                     assigned_at = now()""",
+            pid, str(user["id"]),
+        )
 
     # ── 3. Crear usuario PACIENTE y vincularlo ────────────────────────────────
     new_user = await create_patient_user(db, body.name, pid)
@@ -592,6 +618,7 @@ def _patient_list_entry(row) -> dict:
         "birth_date": str(row["birth_date"]) if row.get("birth_date") else None,
         "pending_reports": row.get("pending_reports", 0),
         "last_risk_category": row.get("last_risk_category"),
+        "image_count": int(row.get("image_count", 0)),
     }
 
 def _observation_to_fhir(row) -> dict:
@@ -621,14 +648,44 @@ def _risk_to_fhir(row) -> dict:
         "LOW": "281414001", "MEDIUM": "281415000",
         "HIGH": "281416004", "CRITICAL": "24484000",
     }
-    cat = row.get("risk_category", "LOW")
+
+    # Descifrar diagnóstico desde prediction_enc (fuente autoritativa)
+    pred_raw = row.get("pred_decrypted")
+    if pred_raw:
+        try:
+            pred = json.loads(pred_raw)
+            score = pred.get("score")
+            cat = pred.get("category", "LOW")
+        except Exception:
+            score = float(row["risk_score"]) if row.get("risk_score") else None
+            cat = row.get("risk_category", "LOW")
+    else:
+        score = float(row["risk_score"]) if row.get("risk_score") else None
+        cat = row.get("risk_category", "LOW")
+
+    # Descifrar SHAP desde shap_enc (fuente autoritativa)
+    shap_raw = row.get("shap_decrypted")
+    if shap_raw:
+        try:
+            shap_json = json.loads(shap_raw)
+        except Exception:
+            shap_json = None
+    else:
+        shap_json = row.get("shap_json")  # fallback para filas anteriores al cifrado
+
+    dl_metadata = None
+    ml_metadata = None
+    if isinstance(shap_json, dict):
+        dl_metadata = shap_json.get("_dl")
+        ml_metadata = shap_json.get("_ml")
+
     return {
         "resourceType": "RiskAssessment",
         "id": str(row["id"]),
         "subject": {"reference": f"Patient/{row['patient_id']}"},
         "method": row.get("model_type"),
         "prediction": [{
-            "probabilityDecimal": float(row["risk_score"]) if row.get("risk_score") else None,
+            "probabilityDecimal": score,
             "qualitativeRisk": {
                 "coding": [{"system": "http://snomed.info/sct",
                             "code": snomed_map.get(cat, "281414001"),
@@ -636,7 +693,9 @@ def _risk_to_fhir(row) -> dict:
             },
         }],
         "is_critical": row.get("is_critical", False),
-        "shap_values": row.get("shap_json"),
+        "shap_values": shap_json,
+        "dl_metadata": dl_metadata,
+        "ml_metadata": ml_metadata,
         "gradcam_url": row.get("gradcam_url"),
         "original_url": row.get("original_url"),
         "doctor_action": row.get("doctor_action"),

@@ -15,7 +15,7 @@ const RISK_CONFIG = {
   CRITICAL: { label: 'Crítico', dotClass: 'dot-critical', badgeClass: 'badge-critical' },
 }
 
-const FILTERS = ['Todos', 'Pendiente', 'Crítico', 'Sin análisis']
+const FILTERS = ['Todos', 'Pendiente', 'Crítico', 'Sin análisis', 'Con imágenes']
 
 function StatCard({ label, value, sub, color, icon }) {
   return (
@@ -64,9 +64,10 @@ export default function Dashboard() {
           p.name?.toLowerCase().includes(q) || p.id?.toLowerCase().includes(q)
         )
       }
-      if (filter === 'Pendiente')    entries = entries.filter(p => Number(p.pending_reports) > 0)
-      else if (filter === 'Crítico') entries = entries.filter(p => p.last_risk_category === 'CRITICAL')
+      if (filter === 'Pendiente')         entries = entries.filter(p => Number(p.pending_reports) > 0)
+      else if (filter === 'Crítico')      entries = entries.filter(p => p.last_risk_category === 'CRITICAL')
       else if (filter === 'Sin análisis') entries = entries.filter(p => !p.last_risk_category)
+      else if (filter === 'Con imágenes') entries = entries.filter(p => Number(p.image_count) > 0)
 
       setPatients(entries.slice(0, LIMIT))
     } catch (e) { console.error(e) }

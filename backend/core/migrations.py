@@ -183,6 +183,9 @@ CREATE TABLE IF NOT EXISTS superuser_audit (
 ALTER TABLE risk_reports ADD COLUMN IF NOT EXISTS gradcam_url TEXT;
 ALTER TABLE risk_reports ADD COLUMN IF NOT EXISTS original_url TEXT;
 
+-- ── Security: shap_enc para almacenar SHAP cifrado con pgcrypto AES-256 ───────
+ALTER TABLE risk_reports ADD COLUMN IF NOT EXISTS shap_enc BYTEA;
+
 -- ── Final: patient_user_id (si no existe) ────────────────────────────────────
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS patient_user_id UUID REFERENCES users(id);
 

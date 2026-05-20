@@ -8,15 +8,37 @@ Requisitos:
 Uso (con el sistema levantado):
   python scripts/seed_patients.py
 """
-import os, pathlib, time
+import os, pathlib, time, urllib3
 import pandas as pd
 from faker import Faker
 import requests
+from requests.exceptions import HTTPError
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-API_URL    = os.getenv("API_URL",    "http://localhost:8000")
+API_URL    = os.getenv("API_URL",    "https://localhost")
 ACCESS_KEY = os.getenv("ACCESS_KEY", "d13e4618e587c3d42ece96cadcc30b37")
 PERM_KEY   = os.getenv("PERM_KEY",   "d7146f286875d1e9c3018e18cff4750d")
+
+# Session global — reutiliza conexión y deshabilita verificación SSL (cert autofirmado)
+_session = requests.Session()
+_session.verify = False
+
+
+def _post(url, **kwargs):
+    """POST con retry automático en 429 (rate limit)."""
+    for attempt in range(5):
+        r = _session.post(url, **kwargs)
+        if r.status_code == 429:
+            wait = 8 * (attempt + 1)
+            print(f"    ⏳ Rate limit — esperando {wait}s...")
+            time.sleep(wait)
+            continue
+        r.raise_for_status()
+        return r
+    r.raise_for_status()
+    return r
 
 DIABETES_CSV = pathlib.Path("datasets/diabetes.csv")
 APTOS_DIR    = pathlib.Path("datasets/aptos/train_images")
@@ -51,7 +73,7 @@ faker = Faker("es_CO")
 
 
 def login() -> str:
-    r = requests.post(
+    r = _post(
         f"{API_URL}/auth/login",
         headers={"X-Access-Key": ACCESS_KEY, "X-Permission-Key": PERM_KEY},
     )
@@ -61,7 +83,7 @@ def login() -> str:
 
 def create_patient(token: str, name: str, birth_date: str,
                    id_doc: str, ground_truth: int) -> str:
-    r = requests.post(
+    r = _post(
         f"{API_URL}/fhir/Patient",
         headers={"Authorization": f"Bearer {token}",
                  "Content-Type": "application/json"},
@@ -74,7 +96,7 @@ def create_patient(token: str, name: str, birth_date: str,
 
 def create_observation(token: str, patient_id: str,
                        loinc_code: str, value: float, unit: str):
-    r = requests.post(
+    r = _post(
         f"{API_URL}/fhir/Observation",
         headers={"Authorization": f"Bearer {token}",
                  "Content-Type": "application/json"},
@@ -91,7 +113,7 @@ def upload_image(token: str, patient_id: str, img_path: pathlib.Path):
     garantizando que la presigned URL use el host correcto (MINIO_PUBLIC_ENDPOINT).
     """
     with open(img_path, "rb") as f:
-        r = requests.post(
+        r = _post(
             f"{API_URL}/fhir/Media/upload",
             headers={"Authorization": f"Bearer {token}"},
             data={"patient_id": patient_id, "modality": "FUNDUS"},
@@ -154,7 +176,7 @@ def main():
             print(f"  [{created:3d}] ✅ {name} (GT={gt})"
                   f"{' + retina' if with_img >= created else ''}")
 
-            time.sleep(0.05)
+            time.sleep(0.4)
 
         except Exception as e:
             errors += 1

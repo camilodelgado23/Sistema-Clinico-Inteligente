@@ -3,11 +3,11 @@
 ## Conectarse al servidor
 
 ```bash
-ssh root@24.144.105.184
+ssh root@147.182.131.232
 ```
 
 ```bash
-cd ~/Sistema-Cl-nico-Digital-Interoperable
+cd /var/projects/Sistema-Clinico-Inteligente
 ```
 
 ---
@@ -15,11 +15,19 @@ cd ~/Sistema-Cl-nico-Digital-Interoperable
 ## Levantar el sistema
 
 ```bash
-docker compose up -d
+make up
 ```
 
-> ⚠️ MLflow está apagado por defecto (consume demasiados recursos).
-> Si los necesitas: `docker compose start mlflow`
+Otros comandos útiles:
+
+```bash
+make build    # Reconstruir imágenes y relanzar
+make restart  # Reinicio rápido sin rebuild
+make logs     # Ver logs en tiempo real
+make health   # Verificar estado de servicios
+make migrate  # Aplicar migraciones de BD
+make backup   # Backup de PostgreSQL
+```
 
 ---
 
@@ -27,138 +35,169 @@ docker compose up -d
 
 | Servicio | URL | Para qué sirve |
 |---|---|---|
-| Frontend | http://24.144.105.184:3000 | Interfaz clínica completa |
-| Backend Swagger | http://24.144.105.184:8000/docs | Probar endpoints directamente |
-| ML Service | http://24.144.105.184:8001/docs | Endpoints del modelo tabular |
-| DL Service | http://24.144.105.184:8002/docs | Endpoints del modelo de imágenes |
-| Orchestrator | http://24.144.105.184:8003/docs | Cola de inferencias |
-| MinIO Console | http://24.144.105.184:9001 | Ver imágenes almacenadas |
+| Frontend | https://clinai.me | Interfaz clínica completa |
+| Backend API | https://clinai.me/api/v1/docs | Swagger — probar endpoints |
+| MinIO Console | `ssh -L 9001:localhost:9001 root@147.182.131.232 -N` | Consola MinIO (tunel SSH) |
 
 ---
 
-## Credenciales — Staff
+## Credenciales — Staff (API)
 
-| Usuario | Rol | Access Key | Permission Key |
-|---|---|---|---|
-| admin | ADMIN | admin-access-key-001 | admin-perm-key-001 |
-| medico1 | MEDICO | 2aca485d4737d306c54855e7658e4676 | 32002b84b268b49ab1909fbca76323e0 |
-| medico3 | MEDICO | b9beafe1f1fecec10ce8082a351b67ac | 427308ff69e8dcec9a4b7a177ba641b2 |
+| Usuario | Rol | Access Key | Permission Key | Activo |
+| --- | --- | --- | --- | --- |
+| admin | ADMIN | `d13e4618e587c3d42ece96cadcc30b37` | `d7146f286875d1e9c3018e18cff4750d` | true |
+| admin2 | ADMIN | `0ce68b1afd244ec3448abc352570e2f8` | `58bff4427edfa9fb6a74bada13d69c9d` | true |
+| medico1 | MEDICO | `a1b2c3d4e5f6789012345678901234ab` | `b2c3d4e5f678901234567890abcdef12` | true |
+| medico2 | MEDICO | `436ea7af88920ca465c23864a75103e2` | `7add1bf58fa18692b35c0f45bddf3cbf` | true |
+
+---
+
+## Credenciales — SuperUser (médicos externos)
+
+| Nombre | Correo | Contraseña | Licencia Médica |
+| --- | --- | --- | --- |
+| Juan Garcia | medico2@hospital.com | juan1234 | REG-123456 |
+| Dr. Camilo Test | medico@clinai.com | password123 | REG-12345 |
 
 ---
 
 ## Credenciales — Pacientes
 
 | Paciente | Usuario | X-Access-Key | X-Permission-Key |
-|---|---|---|---|
-| Leidy Hurtado Tamayo | leidyhurtadotamayo | 4043ed12eb69b7832b40d1941109385e | e4609b9c8d7242530aa769b6a47551b3 |
-| Eduardo Serna Peña | eduardosernapena | de08861d3425b680d8e081c0a56d3e4f | fc3afc1e8b8782088186f181282b96bf |
-| Dahiana Beatriz Zambrano | dahianabeatrizzambra | eca70f80ad17580309b4801c923093f4 | 94227756e1a1ce11ddd8a5ad14d741ad |
-| Juan Meza | juanmeza | 52ea50ab9fd9dc530d0a7e931bfd27e1 | 64ab8a8ffe9cf0b64e8719bcdc338fea |
-| Alfonso Danilo Beltrán Molina | alfonsodanilobeltran | f0d5420d6bb4dbfb8dff4cf2953641fd | 7c5857c1e2818fd62e2ba968260e9a7f |
-| Aida Zapata | aidazapata | bd600f492e588325240be1b5651ff0bc | c9882d7beb31ce6c90e5c31f7cb06934 |
+| --- | --- | --- | --- |
+| Álvaro Arnulfo Rojas Ortiz | alvaroarnulforojasor | `e3f8a2118e66c6e331ab3d2fd2b01f44` | `f6959864fe27e9dd9688d146100d3d99` |
+| Antonio Luis Daza Ortiz | antonioluisdazaortiz | `201898cc32ac0e51d7122e30f46f27d4` | `8dcf4896232fddb218fd14391135985a` |
+| Edilma Diana Torres Velásquez | edilmadianatorresvel | `d5879f72d7af6ab5ac129a6f4d532342` | `7a7f4ba52977950b2dbfe2179dc90d2a` |
+| María López | marialopez | `af0c9b27155d99bc747f5df9f1b6b338` | `09dc62dbc763cd91997a3c32262d2e01` |
+| Ocampo Ramírez Guzmán | ocamporamirezguzman | `5511dc0d3b79e7235c187fea384fbd14` | `7483f6703a7d442b711e7ddfd06e544a` |
 
 # Estructura del Proyecto — Sistema Clínico Digital Interoperable
 
 ```
-Sistema-Clínico-Digital-Interoperable/
+Sistema-Clinico-Inteligente/
 │
-├── docker-compose.yml          # Orquesta todos los servicios (nginx, backend, frontend, ml, dl, etc.)
+├── docker-compose.yml          # Orquesta todos los servicios
+├── Makefile                    # Comandos de despliegue (up, build, health, backup…)
+├── .env                        # Variables de entorno (AES_KEY, JWT_SECRET, MinIO, etc.)
 ├── env.example                 # Plantilla de variables de entorno
 ├── Readme.md                   # Documentación principal
-├── Readme_datasets.md          # Documentación de los datasets usados para entrenar
+├── Readme_datasets.md          # Documentación de datasets de entrenamiento
 │
-├── nginx/                      # Proxy inverso
-│   ├── nginx.conf              # Configuración de rutas, timeouts, rate-limiting y CORS
+├── nginx/                      # Proxy inverso + TLS
+│   ├── nginx.conf              # Rutas, rate-limiting por CF-Connecting-IP, CORS
+│   ├── Dockerfile
 │   └── certs/
-│       ├── cert.pem            # Certificado SSL
+│       ├── cert.pem            # Certificado Cloudflare Origin (válido hasta 2041)
 │       └── key.pem             # Clave privada SSL
 │
-├── backend/                    # API principal (FastAPI)
-│   ├── main.py                 # App FastAPI: CORS, middlewares, routers, proxy a orquestador
-│   ├── Dockerfile              # Imagen Docker del backend
-│   ├── requirements.txt        # Dependencias Python
-│   ├── .env                    # Variables de entorno (DB, MinIO, claves)
+├── backend/                    # API principal (FastAPI + asyncpg)
+│   ├── main.py                 # App: CORS, middlewares, registro de routers
+│   ├── Dockerfile
+│   ├── requirements.txt
 │   ├── core/
-│   │   ├── config.py           # Settings globales (DATABASE_URL, MinIO, CORS, etc.)
-│   │   ├── auth.py             # JWT, RBAC, validación de roles (ADMIN, MEDICO, PACIENTE)
-│   │   ├── crypto.py           # Cifrado AES-256 para datos sensibles
-│   │   ├── migrations.py       # SQL de migraciones automáticas al arrancar
-│   │   └── audit.py            # Registro de auditoría de acciones
+│   │   ├── config.py           # Settings globales (DATABASE_URL, AES_KEY, MinIO, etc.)
+│   │   ├── auth.py             # JWT, RBAC — roles ADMIN / MEDICO / PACIENTE
+│   │   ├── crypto.py           # AES-256 (pgp_sym_encrypt/decrypt) para campos sensibles
+│   │   ├── migrations.py       # Migraciones SQL automáticas al arrancar
+│   │   └── audit.py            # Log de auditoría de acciones clínicas
 │   └── routers/
-│       ├── auth.py             # Endpoints de login, registro, logout
-│       ├── fhir.py             # Endpoints FHIR R4 (Patient, Media, RiskAssessment, etc.)
-│       └── admin.py            # Endpoints de administración (gestión de usuarios)
+│       ├── auth.py             # Login, registro, logout
+│       ├── fhir.py             # FHIR R4: Patient, Media, RiskAssessment, Observation
+│       ├── admin.py            # Gestión de usuarios (solo ADMIN)
+│       └── superuser.py        # API interoperabilidad — médicos externos (PASO 06)
 │
-├── frontend/                   # Interfaz clínica (React + Vite)
-│   ├── index.html              # HTML base
-│   ├── vite.config.js          # Configuración de Vite
-│   ├── package.json            # Dependencias Node
-│   ├── nginx-spa.conf          # Nginx para servir el SPA en producción
-│   ├── Dockerfile              # Imagen Docker del frontend
-│   ├── .env                    # VITE_API_URL y otras variables
+├── Frontend/                   # Interfaz clínica (React + Vite)
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── package.json
+│   ├── nginx-spa.conf          # Nginx SPA en producción
+│   ├── Dockerfile
 │   └── src/
 │       ├── main.jsx            # Punto de entrada React
 │       ├── App.jsx             # Rutas principales
-│       ├── index.css           # Estilos globales
+│       ├── index.css
 │       ├── components/
-│       │   ├── InferencePanel.jsx      # Panel de análisis IA (ML/DL/Multimodal) con polling
-│       │   ├── ImageViewer.jsx         # Visor de imágenes médicas con zoom y Grad-CAM
-│       │   ├── PatientImagenes.jsx     # Grid de imágenes del paciente + subida
-│       │   ├── ObservationsChart.jsx   # Gráfica de observaciones clínicas (LOINC)
-│       │   ├── RiskReportForm.jsx      # Formulario de firma médica del reporte de riesgo
-│       │   ├── CreatePatientModal.jsx  # Modal para crear nuevo paciente
-│       │   ├── HabeasModal.jsx         # Modal de consentimiento Habeas Data
-│       │   ├── MigrationPanel.jsx      # Panel de migración FHIR
-│       │   ├── Layout.jsx              # Layout general con sidebar y navbar
-│       │   └── Layout.css             # Estilos del layout
+│       │   ├── InferencePanel.jsx      # Panel IA (ML/DL/Multimodal) con polling
+│       │   ├── ImageViewer.jsx         # Visor imágenes médicas + Grad-CAM
+│       │   ├── PatientImagenes.jsx     # Grid imágenes del paciente + subida a MinIO
+│       │   ├── ObservationsChart.jsx   # Gráfica observaciones clínicas (LOINC)
+│       │   ├── RiskReportForm.jsx      # Formulario firma médica del reporte de riesgo
+│       │   ├── CreatePatientModal.jsx  # Modal crear nuevo paciente
+│       │   ├── HabeasModal.jsx         # Modal consentimiento Habeas Data
+│       │   ├── Migrationpanel.jsx      # Panel migración FHIR
+│       │   ├── layout.jsx              # Layout con sidebar y navbar
+│       │   └── layout.css
 │       ├── hooks/
-│       │   └── useInferenceSocket.js   # Hook WebSocket para tiempo real en inferencia
+│       │   └── useInferenceSocket.js   # Hook WebSocket inferencia en tiempo real
 │       ├── services/
 │       │   └── api.js                  # Cliente axios con interceptores de auth
 │       ├── store/
 │       │   └── auth.js                 # Estado global de autenticación (Zustand)
 │       └── views/
-│           ├── Login.jsx / Login.css           # Pantalla de login
-│           ├── Dashboard.jsx / Dashboard.css   # Dashboard principal con lista de pacientes
-│           ├── PatientDetail.jsx / PatientDetail.css  # Vista detalle del paciente (tabs)
-│           ├── PatientView.jsx                 # Vista de paciente desde rol PACIENTE
-│           ├── AdminPanel.jsx / AdminPanel.css # Panel de administración de usuarios
-│           └── index.css                       # Estilos de vistas
+│           ├── login.jsx / login.css           # Pantalla de login
+│           ├── dashboard.jsx / dashboard.css   # Dashboard — lista de pacientes
+│           ├── PatientDetail.jsx / PatientDetail.css  # Detalle paciente (tabs)
+│           ├── PatientView.jsx                 # Vista rol PACIENTE
+│           ├── AdminPanel.jsx / AdminPanel.css # Panel administración de usuarios
+│           ├── AgentView.jsx / AgentView.css   # Chat con agente RAG clínico
+│           ├── SuperUserView.jsx / SuperUserView.css  # Portal médico externo (PASO 06)
+│           └── index.css
 │
-├── ml-service/                 # Servicio de inferencia tabular (FastAPI)
-│   ├── main.py                 # Endpoints ML: /ml/predict con modelo ONNX tabular
+├── rag-agent/                  # Agente RAG clínico (FastAPI + FAISS + BM25 + Groq)
+│   ├── main.py                 # Endpoints: /agent/chat, /agent/ragas, /health
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── .env                    # DATABASE_URL, MODEL_PATH, etc.
+│   ├── ragas_eval.py           # Evaluación RAGAS (faithfulness, relevance, context recall)
+│   ├── ragas_report.json       # Resultados de la última evaluación RAGAS
+│   ├── core/
+│   │   ├── injection.py        # Anti prompt-injection (14 patrones) + PII masking
+│   │   ├── retriever.py        # Retriever híbrido FAISS + BM25
+│   │   ├── memory.py           # Memoria conversacional por sesión
+│   │   └── tools.py            # Herramientas del agente (fetch paciente, observaciones)
+│   ├── knowledge/              # Base de conocimiento clínico (20 documentos .txt)
+│   │   ├── 01_diabetes_diagnostico.txt
+│   │   ├── 02_retinopatia_diabetica.txt
+│   │   └── … (20 documentos sobre diabetes, FHIR, regulación colombiana, modelos ML/DL)
+│   └── tests/
+│       └── test_adversarial.py # 36 pruebas: injection attacks, falsos positivos, PII masking
+│
+├── ml-service/                 # Inferencia tabular — diabetes (FastAPI + ONNX)
+│   ├── main.py                 # /ml/predict → XGBoost ONNX + SHAP values
+│   ├── Dockerfile
+│   ├── requirements.txt
 │   ├── models/
-│   │   ├── ml_model.onnx       # Modelo XGBoost/RandomForest exportado a ONNX
-│   │   └── ml_metadata.json    # Metadatos: features, clases, risk_map
+│   │   ├── ml_model.onnx       # Modelo XGBoost exportado a ONNX
+│   │   └── ml_metadata.json    # Features, clases, risk_map
 │   └── training/
-│       └── train_and_export.py # Script de entrenamiento y exportación a ONNX
+│       └── train_and_export.py # Entrenamiento y exportación a ONNX
 │
-├── dl-service/                 # Servicio de inferencia por imagen (FastAPI)
-│   ├── main.py                 # Endpoints DL: /dl/predict con EfficientNet-B0 ONNX + Grad-CAM
+├── dl-service/                 # Inferencia por imagen — retinopatía (FastAPI + ONNX)
+│   ├── main.py                 # /dl/predict → EfficientNet-B0 ONNX + Grad-CAM
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── .env                    # DATABASE_URL, MINIO_*, MODEL_PATH, etc.
 │   ├── models/
 │   │   ├── dl_model.onnx       # EfficientNet-B0 exportado a ONNX
-│   │   ├── dl_q8.pth           # Versión INT8 cuantizada del modelo (fallback)
-│   │   └── dl_metadata.json    # Metadatos: clases, risk_map, num_classes
+│   │   ├── dl_q8.pth           # Versión INT8 cuantizada (fallback)
+│   │   └── dl_metadata.json    # Clases, risk_map, num_classes
 │   └── training/
 │       ├── train_and_export.py # Entrenamiento EfficientNet + exportación ONNX/INT8
+│       ├── compute_auc.py      # Cálculo de AUC por clase
 │       └── metrics.json        # Métricas del último entrenamiento
 │
-├── orchestrator/               # Cola de inferencias (FastAPI)
-│   ├── main.py                 # Gestiona tareas async: recibe /infer, llama ml-service o dl-service
+├── orchestrator/               # Cola de inferencias async (FastAPI)
+│   ├── main.py                 # Recibe /infer, delega a ml-service o dl-service, guarda cifrado
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   └── .env                    # URLs de ml-service y dl-service
+│   └── requirements.txt
+│
+├── postgres/
+│   └── init.sql                # Schema inicial + extensión pgcrypto
 │
 ├── scripts/
-│   └── seed_patients.py        # Script para poblar la BD con pacientes y observaciones de prueba
+│   └── seed_patients.py        # Poblar BD con pacientes y observaciones de prueba
 │
-└── datasets/                   # Datasets para entrenamiento (no incluidos en repo)
+└── datasets/                   # Datasets de entrenamiento (no incluidos en repo)
+    ├── diabetes.csv            # Pima Indians Diabetes Dataset
+    └── aptos/                  # APTOS 2019 — retinopatía diabética
 ```
 
 ---
@@ -166,10 +205,16 @@ Sistema-Clínico-Digital-Interoperable/
 ## Flujo resumido
 
 ```
-Browser → nginx:80 → backend:8000 → orchestrator:8003 → ml-service:8001
-                                                        → dl-service:8002
-                   → MinIO:9000 (imágenes)
-                   → PostgreSQL/Render (datos clínicos)
+Browser (HTTPS) → Cloudflare → nginx:443
+                                ├── /api/v1/*      → backend:8000
+                                ├── /agent/*       → rag-agent:8004
+                                ├── /minio/*       → minio:9000
+                                └── /*             → frontend:80
+
+backend → orchestrator:8003 → ml-service:8001
+                             → dl-service:8002
+backend → PostgreSQL:5432
+rag-agent → PostgreSQL:5432 (FAISS + BM25 retrieval)
 ```
 
 ## 🎬 Demo del sistema

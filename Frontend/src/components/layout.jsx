@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { authAPI } from '../services/api'
 import { useAuthStore } from '../store/auth'
@@ -41,12 +42,20 @@ const NAV_ITEMS = [
 ]
 
 export default function Layout() {
-  const { role, clearAuth } = useAuthStore()
+  const { role, clearAuth, pendingReports } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
   const normalizedRole = role?.toUpperCase()
+  const [blockModal, setBlockModal] = useState(false)
+
+  // Importar useState desde react — ya está importado en el módulo
+  const guardedNavigate = (path) => {
+    if (pendingReports > 0) { setBlockModal(true); return }
+    navigate(path)
+  }
 
   const handleLogout = async () => {
+    if (pendingReports > 0) { setBlockModal(true); return }
     try { await authAPI.logout() } catch {}
     clearAuth()
     navigate('/login', { replace: true })
@@ -64,6 +73,28 @@ export default function Layout() {
 
   return (
     <div className="layout">
+      {blockModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:9999,
+          display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div style={{background:'var(--surface-1,#1e293b)',border:'1px solid #dc2626',
+            borderRadius:12,padding:'2rem',maxWidth:420,width:'90%',textAlign:'center',boxShadow:'0 25px 50px rgba(0,0,0,0.5)'}}>
+            <div style={{fontSize:'2.5rem',marginBottom:'0.75rem'}}>🔒</div>
+            <h3 style={{color:'#fca5a5',marginBottom:'0.75rem',fontSize:'1.1rem',fontWeight:700}}>
+              Reporte pendiente de firma
+            </h3>
+            <p style={{color:'var(--text-secondary,#94a3b8)',fontSize:'0.9rem',lineHeight:1.6,marginBottom:'1.5rem'}}>
+              Hay reportes clínicos que aún no han sido firmados. Debe firmarlos antes de navegar a otra sección o cerrar sesión.
+            </p>
+            <button
+              onClick={() => setBlockModal(false)}
+              style={{background:'#06b6d4',color:'#000',border:'none',borderRadius:8,
+                padding:'0.625rem 1.5rem',fontWeight:700,cursor:'pointer',fontSize:'0.95rem'}}>
+              Entendido — volver a firmar
+            </button>
+          </div>
+        </div>
+      )}
+
       <aside className="sidebar">
         {/* Brand */}
         <div className="sidebar-brand">
@@ -103,7 +134,7 @@ export default function Layout() {
               <button
                 key={n.path}
                 className={`nav-item ${active ? 'nav-item--active' : ''}`}
-                onClick={() => navigate(n.path)}
+                onClick={() => guardedNavigate(n.path)}
               >
                 <span className="nav-icon">{n.icon}</span>
                 <span>{n.label}</span>

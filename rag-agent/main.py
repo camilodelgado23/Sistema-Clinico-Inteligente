@@ -11,8 +11,9 @@ from typing import Optional
 import asyncpg
 import httpx
 import redis.asyncio as aioredis
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
@@ -34,6 +35,9 @@ class Settings(BaseSettings):
     FHIR_SERVER_URL: str = "http://fhir-server:8080/fhir"
     ML_SERVICE_URL: str = "http://ml-service:8001"
     DL_SERVICE_URL: str = "http://dl-service:8002"
+    JWT_SECRET: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    ALLOWED_ORIGINS: str = "https://147.182.131.232"
 
     class Config:
         env_file = ".env"
@@ -103,9 +107,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[o.strip() for o in settings.ALLOWED_ORIGINS.split(",")],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 SYSTEM_PROMPT = """Eres un asistente clínico especializado en diabetes y retinopatía diabética.
@@ -124,11 +129,58 @@ Normativa aplicable: Resolución 866/2021, Ley 1581/2012, Resolución 1995/1999.
 """
 
 
+def _decode_token(authorization: Optional[str]) -> dict:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token de autenticación requerido")
+    token = authorization[7:]
+    if not settings.JWT_SECRET:
+        raise HTTPException(status_code=503, detail="Servicio de autenticación no configurado")
+    try:
+        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+
+async def _require_medico(authorization: Optional[str]) -> str:
+    """Returns doctor user_id. Only MEDICO role is allowed to chat with the agent."""
+    payload = _decode_token(authorization)
+    if payload.get("role") != "MEDICO":
+        raise HTTPException(
+            status_code=403,
+            detail="Solo los médicos pueden interactuar con el agente clínico",
+        )
+    return payload["sub"]
+
+
+async def _require_medico_or_admin(authorization: Optional[str]) -> dict:
+    """Returns payload. MEDICO and ADMIN roles allowed (for RAGAS/read endpoints)."""
+    payload = _decode_token(authorization)
+    if payload.get("role") not in ("MEDICO", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+    return payload
+
+
+async def _check_patient_assignment(doctor_id: str, patient_id: str):
+    """Verify this doctor has the patient assigned. Blocks access if not."""
+    if _pg_pool is None:
+        return
+    async with _pg_pool.acquire() as conn:
+        assigned = await conn.fetchval(
+            "SELECT 1 FROM patient_assignments WHERE patient_id=$1::uuid AND doctor_id=$2::uuid",
+            patient_id, doctor_id,
+        )
+        if not assigned:
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene acceso a este paciente. Solo puede consultar pacientes que tenga asignados.",
+            )
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     patient_id: Optional[str] = None
-    rag_mode: str = "hybrid"  # naive | hybrid | rerank | agentic
+    rag_mode: str = "agentic"  # naive | hybrid | rerank | agentic
 
 
 class ChatResponse(BaseModel):
@@ -145,12 +197,19 @@ async def health():
 
 
 @app.post("/agent/chat", response_model=ChatResponse)
-async def chat(body: ChatRequest):
+async def chat(body: ChatRequest, request: Request, authorization: Optional[str] = Header(None, alias="Authorization")):
     """
     Endpoint principal del agente RAG.
-    Soporta: Naive, Advanced, Modular, Agentic RAG.
+    Solo accesible para usuarios con rol MEDICO.
+    Si se provee patient_id, se verifica que el médico tenga ese paciente asignado.
     """
-    sanitize_input(body.message)
+    doctor_id = await _require_medico(authorization)
+
+    if body.patient_id:
+        await _check_patient_assignment(doctor_id, body.patient_id)
+
+    client_ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "unknown")
+    sanitize_input(body.message, user_id=doctor_id, ip=client_ip)
     session_id = body.session_id or str(uuid.uuid4())
 
     history = await _short_mem.get_history(session_id) if _short_mem else []
@@ -326,24 +385,41 @@ async def _fetch_patient_context(patient_id: str) -> str:
                     obs_lines.append(f"  - {display}: {val} {o['unit'] or ''} ({date})")
                 parts.append("Observaciones clínicas (LOINC):\n" + "\n".join(obs_lines))
 
-            # Reportes de riesgo ML/DL
+            # Reportes de riesgo ML/DL — descifrar prediction_enc (fuente autoritativa)
+            aes_key = os.getenv("AES_KEY", "")
             risk_rows = await conn.fetch(
-                """SELECT model_type, risk_score, risk_category, is_critical,
-                          doctor_action, created_at
+                """SELECT model_type, is_critical, doctor_action, created_at,
+                          CASE WHEN prediction_enc IS NOT NULL AND $2 != ''
+                               THEN pgp_sym_decrypt(prediction_enc, $2)
+                               ELSE NULL END AS pred_dec,
+                          risk_score, risk_category
                    FROM risk_reports
                    WHERE patient_id=$1::uuid AND deleted_at IS NULL
                    ORDER BY created_at DESC LIMIT 5""",
-                patient_id,
+                patient_id, aes_key,
             )
             if risk_rows:
                 risk_lines = []
                 for r in risk_rows:
+                    import json as _json
+                    if r["pred_dec"]:
+                        try:
+                            pred = _json.loads(r["pred_dec"])
+                            score = pred.get("score")
+                            category = pred.get("category", "?")
+                        except Exception:
+                            score = r["risk_score"]
+                            category = r["risk_category"] or "?"
+                    else:
+                        score = r["risk_score"]
+                        category = r["risk_category"] or "?"
                     critical = " ⚠ CRÍTICO" if r["is_critical"] else ""
                     action = r["doctor_action"] or "Pendiente revisión"
                     date = str(r["created_at"])[:10]
+                    score_str = f"{float(score):.3f}" if score is not None else "N/D"
                     risk_lines.append(
-                        f"  - [{date}] {r['model_type']}: score={float(r['risk_score']):.3f} | "
-                        f"{r['risk_category']}{critical} | Acción médico: {action}"
+                        f"  - [{date}] {r['model_type']}: score={score_str} | "
+                        f"{category}{critical} | Acción médico: {action}"
                     )
                 parts.append("Reportes de riesgo clínico:\n" + "\n".join(risk_lines))
 
@@ -400,8 +476,9 @@ _ragas_running = False
 
 
 @app.post("/agent/ragas/run", status_code=202)
-async def ragas_run(background_tasks: BackgroundTasks):
-    """Lanza la evaluación RAGAS en segundo plano. Puede tardar varios minutos."""
+async def ragas_run(background_tasks: BackgroundTasks, authorization: Optional[str] = Header(None, alias="Authorization")):
+    """Lanza la evaluación RAGAS en segundo plano. Solo MEDICO o ADMIN."""
+    await _require_medico_or_admin(authorization)
     global _ragas_running
     if _ragas_running:
         raise HTTPException(status_code=409, detail="Evaluación RAGAS ya en curso.")
@@ -437,14 +514,16 @@ async def _run_ragas_eval():
 
 
 @app.get("/agent/ragas/status")
-async def ragas_status():
-    """Retorna si hay una evaluación RAGAS en curso."""
+async def ragas_status(authorization: Optional[str] = Header(None, alias="Authorization")):
+    """Retorna si hay una evaluación RAGAS en curso. Solo MEDICO o ADMIN."""
+    await _require_medico_or_admin(authorization)
     return {"running": _ragas_running}
 
 
 @app.get("/agent/ragas/report")
-async def ragas_report():
-    """Sirve el reporte RAGAS generado por ragas_eval.py."""
+async def ragas_report(authorization: Optional[str] = Header(None, alias="Authorization")):
+    """Sirve el reporte RAGAS generado por ragas_eval.py. Solo MEDICO o ADMIN."""
+    await _require_medico_or_admin(authorization)
     import json
     from pathlib import Path
 

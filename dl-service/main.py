@@ -154,7 +154,7 @@ def _make_presigned_url(key: str) -> str:
     """
     s3 = boto3.client(
         "s3",
-        endpoint_url="http://localhost:9000",
+        endpoint_url="http://minio:9000",
         aws_access_key_id=MINIO_ACCESS_KEY,
         aws_secret_access_key=MINIO_SECRET_KEY,
         config=Config(signature_version="s3v4"),
@@ -212,27 +212,91 @@ class GradCAMHook:
         return np.array(cam_pil)
 
 
+def _render_heatmap_overlay(img: Image.Image, cam: np.ndarray) -> bytes:
+    """Aplica colormap 'hot' sobre cam [0,1] y hace blend con img. Retorna PNG bytes."""
+    import matplotlib
+    matplotlib.use("Agg")
+    try:
+        colormap = matplotlib.colormaps["hot"]
+    except AttributeError:
+        import matplotlib.cm as cm
+        colormap = cm.get_cmap("hot")
+    cam_rgb = (colormap(cam)[:, :, :3] * 255).astype(np.uint8)
+    cam_pil = Image.fromarray(cam_rgb).resize(img.size, Image.BILINEAR)
+    overlay = Image.blend(img.convert("RGBA"), cam_pil.convert("RGBA"), alpha=0.4)
+    out = io.BytesIO()
+    overlay.convert("RGB").save(out, format="PNG")
+    return out.getvalue()
+
+
+def _generate_occlusion_map(img_bytes: bytes, pred_class: int) -> Optional[bytes]:
+    """
+    Occlusion sensitivity map (gradient-free) usando ONNX.
+    Desliza una máscara gris sobre la imagen; las regiones cuya oclusión
+    produce mayor caída en la probabilidad predicha se colorean con más intensidad.
+    ~169 inferencias ONNX ≈ 3-5 s en CPU.
+    """
+    try:
+        img     = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img_224 = img.resize((224, 224))
+        img_arr = np.array(img_224, dtype=np.float32)   # (224, 224, 3) en [0,255]
+
+        PATCH  = 32   # tamaño del parche de oclusión en píxeles
+        STRIDE = 16   # paso del parche
+        H, W   = 224, 224
+
+        # Relleno gris = media ImageNet en espacio [0, 255]
+        gray = np.array([0.485 * 255, 0.456 * 255, 0.406 * 255], dtype=np.float32)
+
+        # Probabilidad base (sin oclusión)
+        baseline_arr, _ = preprocess_image(img_bytes)
+        baseline_prob = float(softmax(run_onnx_inference(baseline_arr))[0][pred_class])
+
+        sensitivity = np.zeros((H, W), dtype=np.float32)
+        count       = np.zeros((H, W), dtype=np.float32)
+
+        for y in range(0, H - PATCH + 1, STRIDE):
+            for x in range(0, W - PATCH + 1, STRIDE):
+                occluded = img_arr.copy()
+                occluded[y:y + PATCH, x:x + PATCH] = gray
+
+                inp  = _preprocess(Image.fromarray(occluded.astype(np.uint8))).unsqueeze(0).numpy()
+                prob = float(softmax(run_onnx_inference(inp))[0][pred_class])
+
+                drop = baseline_prob - prob   # positivo = región importante
+                sensitivity[y:y + PATCH, x:x + PATCH] += drop
+                count[y:y + PATCH, x:x + PATCH] += 1
+
+        valid = count > 0
+        sensitivity[valid] /= count[valid]
+
+        lo, hi = sensitivity.min(), sensitivity.max()
+        if hi > lo:
+            sensitivity = (sensitivity - lo) / (hi - lo)
+
+        print(f"✅ Occlusion sensitivity map generado (baseline_prob={baseline_prob:.3f})")
+        return _render_heatmap_overlay(img, sensitivity)
+
+    except Exception as e:
+        print(f"⚠️  Occlusion sensitivity map failed: {e}")
+        return None
+
+
 def generate_gradcam(img_bytes: bytes, pred_class: int) -> Optional[bytes]:
     """
-    Genera heatmap Grad-CAM y lo superpone a la imagen original.
-    Retorna PNG bytes.
-
-    ✅ Funciona en modo ONNX (carga pesos desde Q8_PATH si existe)
-       o en modo PyTorch (usa _torch_model directamente).
-    Retorna None si no hay pesos disponibles para backprop.
+    Genera heatmap y lo superpone a la imagen original. Retorna PNG bytes.
+    - Con pesos PyTorch disponibles: Grad-CAM verdadero (backprop).
+    - Solo ONNX: occlusion sensitivity map (gradient-free).
     """
-    # Grad-CAM requiere backprop → necesita pesos en un modelo PyTorch.
-    # Si estamos en modo ONNX y no hay Q8_PATH, no podemos generar Grad-CAM.
     has_weights = Q8_PATH.exists() or (not _use_onnx and _torch_model is not None)
     if not has_weights:
-        print("⚠️  Grad-CAM omitido: no hay pesos PyTorch disponibles (solo ONNX)")
-        return None
+        print("ℹ️  Grad-CAM: sin pesos PyTorch — usando occlusion sensitivity map")
+        return _generate_occlusion_map(img_bytes, pred_class)
 
     try:
         img    = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         tensor = _preprocess(img).unsqueeze(0).requires_grad_(True)
 
-        # Construir modelo no-cuantizado para backprop
         gcam_model = models.efficientnet_b0(weights=None)
         gcam_model.classifier[1] = nn.Linear(
             gcam_model.classifier[1].in_features, _meta.get("num_classes", 5)
@@ -242,32 +306,14 @@ def generate_gradcam(img_bytes: bytes, pred_class: int) -> Optional[bytes]:
                 torch.load(str(Q8_PATH), map_location="cpu"), strict=False
             )
         elif not _use_onnx and _torch_model is not None:
-            # Copiar state_dict desde el modelo cargado (sin cuantizar para backprop)
             gcam_model.load_state_dict(_torch_model.state_dict(), strict=False)
 
         gcam_model.eval()
         hook    = GradCAMHook(gcam_model)
         logits  = gcam_model(tensor)
-        cam_arr = hook.compute(logits, pred_class, img.size)
+        cam_arr = hook.compute(logits, pred_class, img.size)   # [0, 255] uint8
 
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.cm as cm
-
-        # matplotlib >= 3.7 eliminó get_cmap — usar colormaps directamente
-        try:
-            colormap = matplotlib.colormaps["hot"]
-        except AttributeError:
-            colormap = cm.get_cmap("hot")
-        cam_color = (colormap(cam_arr / 255.0)[:, :, :3] * 255).astype(np.uint8)
-        cam_pil   = Image.fromarray(cam_color).resize(img.size, Image.BILINEAR)
-
-        # Overlay: 60% original + 40% heatmap
-        overlay = Image.blend(img.convert("RGBA"),
-                              cam_pil.convert("RGBA"), alpha=0.4)
-        out = io.BytesIO()
-        overlay.convert("RGB").save(out, format="PNG")
-        return out.getvalue()
+        return _render_heatmap_overlay(img, cam_arr / 255.0)
     except Exception as e:
         print(f"⚠️  Grad-CAM failed: {e}")
         return None

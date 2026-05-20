@@ -124,22 +124,57 @@ async def get_inference_result(
     row = await db.fetchrow(
         """SELECT id, patient_id, model_type, risk_score, risk_category,
                   is_critical, shap_json, gradcam_url, original_url,
-                  doctor_action, signed_at, created_at
-           FROM risk_reports 
+                  doctor_action, signed_at, created_at,
+                  CASE WHEN prediction_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(prediction_enc, $2)
+                       ELSE NULL END AS pred_decrypted,
+                  CASE WHEN shap_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(shap_enc, $2)
+                       ELSE NULL END AS shap_decrypted
+           FROM risk_reports
            WHERE id = $1::uuid AND deleted_at IS NULL""",
-        result_id,
+        result_id, settings.AES_KEY,
     )
 
     if not row:
         return task
 
     import json as _json
-    shap_values = None
-    if row["shap_json"]:
+
+    # Descifrar diagnóstico desde prediction_enc (fuente autoritativa)
+    pred_raw = row["pred_decrypted"]
+    if pred_raw:
+        try:
+            pred = _json.loads(pred_raw)
+            risk_score_val = pred.get("score")
+            risk_category_val = pred.get("category", "LOW")
+        except Exception:
+            risk_score_val = float(row["risk_score"]) if row["risk_score"] else None
+            risk_category_val = row["risk_category"] or "LOW"
+    else:
+        risk_score_val = float(row["risk_score"]) if row["risk_score"] else None
+        risk_category_val = row["risk_category"] or "LOW"
+
+    # Descifrar SHAP desde shap_enc (fuente autoritativa)
+    shap_raw = row["shap_decrypted"]
+    if shap_raw:
+        try:
+            shap_values = _json.loads(shap_raw)
+        except Exception:
+            shap_values = None
+    elif row["shap_json"]:
         try:
             shap_values = _json.loads(row["shap_json"])
         except Exception:
             shap_values = row["shap_json"]
+    else:
+        shap_values = None
+
+    dl_metadata = None
+    ml_metadata = None
+    if isinstance(shap_values, dict):
+        dl_metadata = shap_values.get("_dl")
+        ml_metadata = shap_values.get("_ml")
 
     snomed_map = {
         "LOW": "281414001",
@@ -148,7 +183,7 @@ async def get_inference_result(
         "CRITICAL": "24484000",
     }
 
-    cat = row["risk_category"] or "LOW"
+    cat = risk_category_val
 
     return {
         **task,
@@ -156,17 +191,19 @@ async def get_inference_result(
             "id":            str(row["id"]),
             "patient_id":    str(row["patient_id"]),
             "model_type":    row["model_type"],
-            "risk_score":    float(row["risk_score"]) if row["risk_score"] else None,
-            "risk_category": row["risk_category"],
+            "risk_score":    risk_score_val,
+            "risk_category": risk_category_val,
             "is_critical":   row["is_critical"],
-            "shap_values":   shap_values,       # ✅ parseado correctamente
-            "gradcam_url":   row["gradcam_url"], # ✅ incluido
-            "original_url":  row["original_url"],# ✅ incluido
+            "shap_values":   shap_values,
+            "dl_metadata":   dl_metadata,
+            "ml_metadata":   ml_metadata,
+            "gradcam_url":   row["gradcam_url"],
+            "original_url":  row["original_url"],
             "doctor_action": row["doctor_action"],
             "signed_at":     row["signed_at"].isoformat() if row["signed_at"] else None,
             "prediction": [
                 {
-                    "probabilityDecimal": float(row["risk_score"]) if row["risk_score"] else None,
+                    "probabilityDecimal": risk_score_val,
                     "qualitativeRisk": {
                         "coding": [
                             {

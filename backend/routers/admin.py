@@ -444,15 +444,16 @@ async def create_assignment(
     if not patient:
         raise HTTPException(404, "Paciente no encontrado")
 
-    try:
-        row = await db.fetchrow(
-            """INSERT INTO patient_assignments (patient_id, doctor_id, assigned_by)
-               VALUES ($1::uuid, $2::uuid, $3::uuid)
-               RETURNING id, patient_id, doctor_id, assigned_at""",
-            body.patient_id, body.doctor_id, str(user["id"]),
-        )
-    except Exception:
-        raise HTTPException(409, "Este paciente ya está asignado a ese médico")
+    row = await db.fetchrow(
+        """INSERT INTO patient_assignments (patient_id, doctor_id, assigned_by)
+           VALUES ($1::uuid, $2::uuid, $3::uuid)
+           ON CONFLICT (patient_id) DO UPDATE
+             SET doctor_id   = EXCLUDED.doctor_id,
+                 assigned_by = EXCLUDED.assigned_by,
+                 assigned_at = now()
+           RETURNING id, patient_id, doctor_id, assigned_at""",
+        body.patient_id, body.doctor_id, str(user["id"]),
+    )
 
     await log_audit(db, str(user["id"]), user["role"], "ASSIGN_PATIENT", "PatientAssignment",
                     str(row["id"]), request.client.host if request.client else None,
