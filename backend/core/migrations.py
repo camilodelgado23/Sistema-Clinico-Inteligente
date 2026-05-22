@@ -195,6 +195,20 @@ ALTER TABLE patients ADD COLUMN IF NOT EXISTS patient_user_id UUID REFERENCES us
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS document_number  BYTEA;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS document_type    VARCHAR(10) DEFAULT 'CC';
 
+-- ── C3: arco_requests (Derechos ARCO — Ley 1581/2012) ───────────────────────
+CREATE TABLE IF NOT EXISTS arco_requests (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id),
+    patient_id  UUID REFERENCES patients(id),
+    type        VARCHAR(20) NOT NULL CHECK (type IN ('ACCESO','RECTIFICACION','CANCELACION','OPOSICION')),
+    message     TEXT NOT NULL,
+    status      VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','RESOLVED','REJECTED')),
+    resolution  TEXT,
+    resolved_by UUID REFERENCES users(id),
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ
+);
+
 -- ── Indexes ──────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_patients_owner       ON patients(owner_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_observations_pat     ON observations(patient_id) WHERE deleted_at IS NULL;
@@ -207,6 +221,25 @@ CREATE INDEX IF NOT EXISTS idx_assignments_patient  ON patient_assignments(patie
 CREATE INDEX IF NOT EXISTS idx_agent_sessions_pat   ON agent_sessions(patient_id);
 CREATE INDEX IF NOT EXISTS idx_agent_memory_pat     ON agent_long_memory(patient_id);
 CREATE INDEX IF NOT EXISTS idx_superuser_audit_ts   ON superuser_audit(ts);
+CREATE INDEX IF NOT EXISTS idx_arco_requests_user   ON arco_requests(user_id);
+
+-- ── SuperUser: firma de reportes por médico externo (practitioners) ───────────
+ALTER TABLE risk_reports ADD COLUMN IF NOT EXISTS signed_by_practitioner UUID REFERENCES practitioners(id);
+CREATE INDEX IF NOT EXISTS idx_arco_requests_status ON arco_requests(status);
+
+-- ── C4: practitioner_assignments (médico externo ↔ paciente) ──────────────────
+-- Controla qué pacientes puede ver/consultar cada practitioner (SuperUser).
+-- El practitioner SOLO puede acceder a pacientes en esta tabla.
+CREATE TABLE IF NOT EXISTS practitioner_assignments (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    practitioner_id UUID NOT NULL REFERENCES practitioners(id),
+    patient_id      UUID NOT NULL REFERENCES patients(id),
+    assigned_by     UUID REFERENCES users(id),
+    assigned_at     TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(practitioner_id, patient_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pract_assign_pract ON practitioner_assignments(practitioner_id);
+CREATE INDEX IF NOT EXISTS idx_pract_assign_pat   ON practitioner_assignments(patient_id);
 """
 
 if __name__ == "__main__":

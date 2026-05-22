@@ -24,6 +24,17 @@ from routers.admin import create_patient_user
 
 router = APIRouter(prefix="/fhir", tags=["FHIR"])
 
+LOINC_DISPLAY = {
+    "2339-0":  "Glucosa",
+    "55284-4": "Presión arterial",
+    "39156-5": "BMI",
+    "14749-6": "Insulina",
+    "21612-7": "Edad",
+    "11996-6": "Embarazos",
+    "39106-0": "Grosor de piel",
+    "33914-3": "Pedigree diabetes",
+}
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # HELPER MinIO
@@ -113,11 +124,12 @@ async def list_patients(
     request: Request,
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    include_deleted: bool = Query(False),
     user: dict = Depends(require_authenticated),
     db: asyncpg.Connection = Depends(get_db),
 ):
     if user["role"] == "ADMIN":
-        where, params = "WHERE p.deleted_at IS NULL", []
+        where, params = ("" if include_deleted else "WHERE p.deleted_at IS NULL"), []
     elif user["role"] == "MEDICO":
         # ── FIX: Médico SOLO ve pacientes asignados explícitamente ────────────
         where = """WHERE p.deleted_at IS NULL AND
@@ -135,7 +147,7 @@ async def list_patients(
     aes_idx = len(params) + 1
     params_dec = params + [settings.AES_KEY]
     rows = await db.fetch(
-        f"""SELECT p.id, p.name, p.birth_date, p.created_at,
+        f"""SELECT p.id, p.name, p.birth_date, p.created_at, p.deleted_at, p.is_active,
                    (SELECT COUNT(*) FROM risk_reports r
                     WHERE r.patient_id = p.id AND r.deleted_at IS NULL AND r.signed_at IS NULL) AS pending_reports,
                    (SELECT CASE WHEN r.prediction_enc IS NOT NULL
@@ -238,7 +250,7 @@ async def restore_patient(
     db: asyncpg.Connection = Depends(get_db),
 ):
     await db.execute(
-        "UPDATE patients SET deleted_at = NULL WHERE id = $1::uuid", pid
+        "UPDATE patients SET deleted_at = NULL, is_active = TRUE WHERE id = $1::uuid", pid
     )
     return {"restored": pid}
 
@@ -616,18 +628,26 @@ def _patient_list_entry(row) -> dict:
         "id": str(row["id"]),
         "name": row["name"],
         "birth_date": str(row["birth_date"]) if row.get("birth_date") else None,
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        "deleted_at": row["deleted_at"].isoformat() if row.get("deleted_at") else None,
+        "is_active": row.get("is_active", True),
         "pending_reports": row.get("pending_reports", 0),
         "last_risk_category": row.get("last_risk_category"),
         "image_count": int(row.get("image_count", 0)),
     }
 
 def _observation_to_fhir(row) -> dict:
+    loinc = row["loinc_code"]
+    display = LOINC_DISPLAY.get(loinc, loinc)
     return {
         "resourceType": "Observation",
         "id": str(row["id"]),
         "subject": {"reference": f"Patient/{row['patient_id']}"},
         "status": row["status"],
-        "code": {"coding": [{"system": "http://loinc.org", "code": row["loinc_code"]}]},
+        "code": {
+            "coding": [{"system": "http://loinc.org", "code": loinc, "display": display}],
+            "text": display,
+        },
         "valueQuantity": {"value": float(row["value"]), "unit": row["unit"]},
         "effectiveDateTime": row["created_at"].isoformat(),
     }

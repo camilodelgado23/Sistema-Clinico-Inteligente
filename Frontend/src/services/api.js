@@ -172,11 +172,19 @@ export const adminAPI = {
 
 // ── Assignment API ────────────────────────────────────────────────────────────
 export const assignmentAPI = {
-  list:         (params) => api.get('/admin/assignments', { params }),
-  create:       (body)   => api.post('/admin/assignments', body),
-  remove:       (aid)    => api.delete(`/admin/assignments/${aid}`),
-  listDoctors:  ()       => api.get('/admin/assignments/doctors'),
-  listPatients: ()       => api.get('/admin/assignments/patients'),
+  list:                (params) => api.get('/admin/assignments', { params }),
+  create:              (body)   => api.post('/admin/assignments', body),
+  remove:              (aid)    => api.delete(`/admin/assignments/${aid}`),
+  listDoctors:         ()       => api.get('/admin/assignments/doctors'),
+  listPatients:        ()       => api.get('/admin/assignments/patients'),
+  listPractitioners:   ()       => api.get('/admin/assignments/practitioners'),
+}
+
+// ── Practitioner Assignment API ───────────────────────────────────────────────
+export const practitionerAssignmentAPI = {
+  list:   (params) => api.get('/admin/practitioner-assignments', { params }),
+  create: (body)   => api.post('/admin/practitioner-assignments', body),
+  remove: (aid)    => api.delete(`/admin/practitioner-assignments/${aid}`),
 }
 
 // ── ARCO API (Ley 1581/2012) ──────────────────────────────────────────────────
@@ -252,6 +260,16 @@ export const superuserAPI = {
   softDelete: (token, patientId, reason, icd10Code) =>
     axios.delete(`${BASE}/api/v1/superuser/patients/${patientId}`, {
       data: { reason, icd10_code: icd10Code },
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.data),
+
+  myPatients: (token) =>
+    axios.get(`${BASE}/api/v1/superuser/my-patients`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.data),
+
+  agentChat: (token, body) =>
+    axios.post(`${BASE}/api/v1/superuser/agent/chat`, body, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.data),
 }

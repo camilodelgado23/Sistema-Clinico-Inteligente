@@ -504,6 +504,128 @@ async def list_all_patients(
     return [{"id": str(r["id"]), "name": r["name"]} for r in rows]
 
 
+@router.get("/assignments/practitioners")
+async def list_active_practitioners_for_assignment(
+    user: dict = Depends(require_admin),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """Lista médicos externos activos para el selector de asignación."""
+    rows = await db.fetch(
+        "SELECT id, full_name, license_number FROM practitioners WHERE is_active = TRUE ORDER BY full_name"
+    )
+    return [{"id": str(r["id"]), "full_name": r["full_name"], "license_number": r["license_number"]} for r in rows]
+
+
+# ── PRACTITIONER ASSIGNMENTS (médico externo ↔ paciente) ──────────────────────
+
+class PractitionerAssignmentCreate(BaseModel):
+    practitioner_id: str
+    patient_id: str
+
+
+@router.get("/practitioner-assignments")
+async def list_practitioner_assignments(
+    practitioner_id: Optional[str] = None,
+    patient_id: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(require_admin),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    filters, params = [], []
+    if practitioner_id:
+        params.append(practitioner_id)
+        filters.append(f"pa.practitioner_id = ${len(params)}::uuid")
+    if patient_id:
+        params.append(patient_id)
+        filters.append(f"pa.patient_id = ${len(params)}::uuid")
+    where = f"WHERE {' AND '.join(filters)}" if filters else ""
+    params += [limit, offset]
+    rows = await db.fetch(
+        f"""SELECT pa.id, pa.assigned_at,
+                   p.id AS patient_id, p.name AS patient_name,
+                   pr.id AS practitioner_id, pr.full_name AS practitioner_name,
+                   pr.license_number,
+                   ab.username AS assigned_by_username
+            FROM practitioner_assignments pa
+            JOIN patients p  ON p.id  = pa.patient_id
+            JOIN practitioners pr ON pr.id = pa.practitioner_id
+            LEFT JOIN users ab ON ab.id = pa.assigned_by
+            {where}
+            ORDER BY pa.assigned_at DESC
+            LIMIT ${len(params)-1} OFFSET ${len(params)}""",
+        *params,
+    )
+    total = await db.fetchval(
+        f"SELECT COUNT(*) FROM practitioner_assignments pa {where}", *params[:-2]
+    )
+    return {
+        "total": total, "limit": limit, "offset": offset,
+        "entry": [_pract_assignment_row(r) for r in rows],
+    }
+
+
+@router.post("/practitioner-assignments", status_code=201)
+async def create_practitioner_assignment(
+    body: PractitionerAssignmentCreate,
+    request: Request,
+    user: dict = Depends(require_admin),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    practitioner = await db.fetchrow(
+        "SELECT id, is_active FROM practitioners WHERE id = $1::uuid", body.practitioner_id
+    )
+    if not practitioner or not practitioner["is_active"]:
+        raise HTTPException(400, "El médico externo no existe o está inactivo")
+
+    patient = await db.fetchrow(
+        "SELECT id FROM patients WHERE id = $1::uuid AND deleted_at IS NULL", body.patient_id
+    )
+    if not patient:
+        raise HTTPException(404, "Paciente no encontrado")
+
+    row = await db.fetchrow(
+        """INSERT INTO practitioner_assignments (practitioner_id, patient_id, assigned_by)
+           VALUES ($1::uuid, $2::uuid, $3::uuid)
+           ON CONFLICT (practitioner_id, patient_id) DO UPDATE
+             SET assigned_by = EXCLUDED.assigned_by,
+                 assigned_at = now()
+           RETURNING id, practitioner_id, patient_id, assigned_at""",
+        body.practitioner_id, body.patient_id, str(user["id"]),
+    )
+    await log_audit(
+        db, str(user["id"]), user["role"],
+        "ASSIGN_PATIENT_PRACTITIONER", "PractitionerAssignment",
+        str(row["id"]), request.client.host if request.client else None,
+        detail={"patient_id": body.patient_id, "practitioner_id": body.practitioner_id},
+    )
+    return {
+        "id": str(row["id"]),
+        "practitioner_id": str(row["practitioner_id"]),
+        "patient_id": str(row["patient_id"]),
+        "assigned_at": row["assigned_at"].isoformat(),
+    }
+
+
+@router.delete("/practitioner-assignments/{aid}", status_code=204)
+async def delete_practitioner_assignment(
+    aid: str,
+    request: Request,
+    user: dict = Depends(require_admin),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    result = await db.execute(
+        "DELETE FROM practitioner_assignments WHERE id = $1::uuid", aid
+    )
+    if result == "DELETE 0":
+        raise HTTPException(404, "Asignación no encontrada")
+    await log_audit(
+        db, str(user["id"]), user["role"],
+        "REMOVE_PRACTITIONER_ASSIGNMENT", "PractitionerAssignment",
+        None, request.client.host if request.client else None,
+    )
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 def _assignment_row(row) -> dict:
     return {
@@ -512,6 +634,19 @@ def _assignment_row(row) -> dict:
         "patient_name": row["patient_name"],
         "doctor_id": str(row["doctor_id"]),
         "doctor_username": row["doctor_username"],
+        "assigned_by": row["assigned_by_username"],
+        "assigned_at": row["assigned_at"].isoformat(),
+    }
+
+
+def _pract_assignment_row(row) -> dict:
+    return {
+        "id": str(row["id"]),
+        "patient_id": str(row["patient_id"]),
+        "patient_name": row["patient_name"],
+        "practitioner_id": str(row["practitioner_id"]),
+        "practitioner_name": row["practitioner_name"],
+        "license_number": row["license_number"],
         "assigned_by": row["assigned_by_username"],
         "assigned_at": row["assigned_at"].isoformat(),
     }
@@ -571,7 +706,7 @@ async def submit_arco(
 
     result = await db.fetchrow(
         """INSERT INTO arco_requests (user_id, patient_id, type, message)
-           VALUES ($1::uuid, $2, $3, $4)
+           VALUES ($1::uuid, $2::uuid, $3, $4)
            RETURNING id, created_at""",
         str(user["id"]),
         patient_id,

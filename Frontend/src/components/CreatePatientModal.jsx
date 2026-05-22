@@ -3,11 +3,12 @@
 // Al crear exitosamente muestra las credenciales del usuario PACIENTE generado.
 
 import { useState } from "react";
+import { useAuthStore } from "../store/auth";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 function getAuthHeaders() {
-  const token = localStorage.getItem("token");
+  const token = useAuthStore.getState().token;
   return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 }
 

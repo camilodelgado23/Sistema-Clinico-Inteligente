@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
     ALLOWED_ORIGINS: str = "https://147.182.131.232"
+    INTERNAL_PROXY_SECRET: str = ""  # Compartido con el backend para llamadas internas de confianza
 
     class Config:
         env_file = ".env"
@@ -160,8 +161,30 @@ async def _require_medico_or_admin(authorization: Optional[str]) -> dict:
     return payload
 
 
-async def _check_patient_assignment(doctor_id: str, patient_id: str):
-    """Verify this doctor has the patient assigned. Blocks access if not."""
+def _is_trusted_proxy_request(granted_patient_id: Optional[str], patient_id: str, proxy_secret: Optional[str]) -> bool:
+    """Verifica si el backend principal autorizó explícitamente el acceso a este paciente.
+    Requiere que el secret interno sea correcto y no vacío."""
+    if not settings.INTERNAL_PROXY_SECRET:
+        return False
+    if proxy_secret != settings.INTERNAL_PROXY_SECRET:
+        return False
+    if granted_patient_id != patient_id:
+        return False
+    return True
+
+
+async def _check_patient_assignment(
+    doctor_id: str,
+    patient_id: str,
+    granted_patient_id: Optional[str] = None,
+    proxy_secret: Optional[str] = None,
+):
+    """Verify this doctor has the patient assigned. Blocks access if not.
+    Si el backend principal ya validó el acceso (header X-Granted-Patient-Id + X-Proxy-Secret),
+    se omite la comprobación en patient_assignments."""
+    if _is_trusted_proxy_request(granted_patient_id, patient_id, proxy_secret):
+        return
+
     if _pg_pool is None:
         return
     async with _pg_pool.acquire() as conn:
@@ -197,16 +220,23 @@ async def health():
 
 
 @app.post("/agent/chat", response_model=ChatResponse)
-async def chat(body: ChatRequest, request: Request, authorization: Optional[str] = Header(None, alias="Authorization")):
+async def chat(
+    body: ChatRequest,
+    request: Request,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    x_granted_patient_id: Optional[str] = Header(None, alias="X-Granted-Patient-Id"),
+    x_proxy_secret: Optional[str] = Header(None, alias="X-Proxy-Secret"),
+):
     """
     Endpoint principal del agente RAG.
     Solo accesible para usuarios con rol MEDICO.
-    Si se provee patient_id, se verifica que el médico tenga ese paciente asignado.
+    Si se provee patient_id, se verifica que el médico tenga ese paciente asignado,
+    a menos que el backend principal haya pre-autorizado el acceso via X-Granted-Patient-Id.
     """
     doctor_id = await _require_medico(authorization)
 
     if body.patient_id:
-        await _check_patient_assignment(doctor_id, body.patient_id)
+        await _check_patient_assignment(doctor_id, body.patient_id, x_granted_patient_id, x_proxy_secret)
 
     client_ip = request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "unknown")
     sanitize_input(body.message, user_id=doctor_id, ip=client_ip)

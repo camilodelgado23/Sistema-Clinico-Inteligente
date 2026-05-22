@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     ORCHESTRATOR_URL: str = "http://orchestrator:8003"
     RAG_AGENT_URL: str = "http://rag-agent:8004"
     FHIR_SERVER_URL: str = "http://fhir-server:8080/fhir"
+    INTERNAL_PROXY_SECRET: str = ""  # Secreto compartido entre backend y rag-agent para llamadas internas
 
     REDIS_URL: str = "redis://redis:6379/0"
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -6,13 +6,15 @@ import './SuperUserView.css'
 
 const OWN_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-// Crea un cliente axios dirigido al sistema destino
+// Cliente axios para el sistema destino — todos los endpoints van por el backend propio
 function makeSuAPI(baseUrl, token) {
   const headers = token ? { Authorization: `Bearer ${token}` } : {}
   const base = baseUrl.replace(/\/$/, '')
   return {
     login: (body) =>
       axios.post(`${base}/api/v1/auth/superuser/login`, body).then(r => r.data),
+    myPatients: () =>
+      axios.get(`${base}/api/v1/superuser/my-patients`, { headers }).then(r => r.data),
     searchPatient: (identifier) =>
       axios.get(`${base}/api/v1/superuser/patients`, { params: { identifier }, headers }).then(r => r.data),
     createPatient: (fhirBody) =>
@@ -24,12 +26,18 @@ function makeSuAPI(baseUrl, token) {
       axios.post(`${base}/api/v1/superuser/patients/${patientId}/observations`, fhirObs, { headers }).then(r => r.data),
     inference: (modelType, body) =>
       axios.post(`${base}/api/v1/superuser/inference/${modelType}`, body, { headers }).then(r => r.data),
+    getRiskReports: (patientId) =>
+      axios.get(`${base}/api/v1/superuser/patients/${patientId}/risk-reports`, { headers }).then(r => r.data),
+    signReport: (rid, body) =>
+      axios.patch(`${base}/api/v1/superuser/risk-reports/${rid}/sign`, body, { headers }).then(r => r.data),
+    agentChat: (body) =>
+      axios.post(`${base}/api/v1/superuser/agent/chat`, body, { headers }).then(r => r.data),
   }
 }
 
-const TABS = [
-  { id: 'search', label: 'Buscar Paciente', icon: '🔍' },
-  { id: 'create', label: 'Crear Paciente',  icon: '➕' },
+const MAIN_TABS = [
+  { id: 'patients', label: 'Mis Pacientes', icon: '👥' },
+  { id: 'create',   label: 'Crear Paciente', icon: '➕' },
 ]
 
 export default function SuperUserView() {
@@ -42,7 +50,7 @@ export default function SuperUserView() {
 
   const [suToken,      setSuToken]      = useState(location.state?.suToken || null)
   const [practitioner, setPractitioner] = useState(location.state?.practitioner || null)
-  const [tab,          setTab]          = useState('search')
+  const [tab,          setTab]          = useState('patients')
   const [selectedPat,  setSelectedPat]  = useState(null)
 
   const api = makeSuAPI(targetUrl, suToken)
@@ -56,13 +64,12 @@ export default function SuperUserView() {
     setSuToken(null)
     setPractitioner(null)
     setSelectedPat(null)
-    setTab('search')
+    setTab('patients')
   }
 
   const applyUrl = () => {
     const u = draftUrl.trim()
     if (!u) return
-    // Si cambia el sistema, cierra sesión
     if (u !== targetUrl) {
       setSuToken(null)
       setPractitioner(null)
@@ -176,35 +183,44 @@ export default function SuperUserView() {
                 <div className="flex gap-2">
                   <button className="btn btn-ghost btn-sm" onClick={() => setTab('obs')}>Ver Observaciones</button>
                   <button className="btn btn-primary btn-sm" onClick={() => setTab('infer')}>Ejecutar Inferencia</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setTab('reports')}>Reportes</button>
                   <button className="btn btn-ghost btn-sm" style={{color:'var(--text-4)'}} onClick={() => setSelectedPat(null)}>✕</button>
                 </div>
               </div>
             )}
 
             <div className="su-tabs">
-              {TABS.map(t => (
+              {MAIN_TABS.map(t => (
                 <button key={t.id} className={`su-tab ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
                   <span>{t.icon}</span>
                   <span>{t.label}</span>
                 </button>
               ))}
+              <button className={`su-tab su-tab--highlight ${tab === 'agent' ? 'active' : ''}`} onClick={() => setTab('agent')}>
+                <span>🤖</span><span>Agente</span>
+              </button>
               {selectedPat && (
                 <>
                   <button className={`su-tab ${tab === 'obs' ? 'active' : ''}`} onClick={() => setTab('obs')}>
                     <span>📊</span><span>Observaciones</span>
                   </button>
-                  <button className={`su-tab su-tab--highlight ${tab === 'infer' ? 'active' : ''}`} onClick={() => setTab('infer')}>
-                    <span>🤖</span><span>Inferencia</span>
+                  <button className={`su-tab ${tab === 'infer' ? 'active' : ''}`} onClick={() => setTab('infer')}>
+                    <span>🧠</span><span>Inferencia</span>
+                  </button>
+                  <button className={`su-tab ${tab === 'reports' ? 'active' : ''}`} onClick={() => setTab('reports')}>
+                    <span>📋</span><span>Reportes</span>
                   </button>
                 </>
               )}
             </div>
 
             <div className="su-content card">
-              {tab === 'search' && <SearchPatientTab api={api} onSelectPatient={setSelectedPat} selectedPat={selectedPat} />}
-              {tab === 'create' && <CreatePatientTab api={api} />}
-              {tab === 'obs'    && <ObservationsTab  api={api} selectedPat={selectedPat} />}
-              {tab === 'infer'  && <InferenceTab     api={api} selectedPat={selectedPat} />}
+              {tab === 'patients' && <MyPatientsTab  api={api} onSelectPatient={p => { setSelectedPat(p); setTab('obs') }} selectedPat={selectedPat} />}
+              {tab === 'create'   && <CreatePatientTab api={api} />}
+              {tab === 'agent'    && <AgentTab        api={api} selectedPat={selectedPat} />}
+              {tab === 'obs'      && <ObservationsTab  api={api} selectedPat={selectedPat} />}
+              {tab === 'infer'    && <InferenceTab     api={api} selectedPat={selectedPat} onGoReports={() => setTab('reports')} />}
+              {tab === 'reports'  && <ReportsTab       api={api} selectedPat={selectedPat} />}
             </div>
           </>
         )}
@@ -268,68 +284,235 @@ function LoginPanel({ targetUrl, onToken }) {
   )
 }
 
-/* ── Buscar Paciente ─────────────────────────────────────────────────────── */
-function SearchPatientTab({ api, onSelectPatient, selectedPat }) {
-  const [query,   setQuery]   = useState('')
-  const [result,  setResult]  = useState(null)
-  const [loading, setLoading] = useState(false)
+/* ── Mis Pacientes ───────────────────────────────────────────────────────── */
+function MyPatientsTab({ api, onSelectPatient, selectedPat }) {
+  const [patients,    setPatients]    = useState(null)
+  const [loading,     setLoading]     = useState(false)
+  const [query,       setQuery]       = useState('')
+  const [searching,   setSearching]   = useState(false)
+  const [searchRes,   setSearchRes]   = useState(null)
+
+  useEffect(() => {
+    setLoading(true)
+    api.myPatients()
+      .then(d => setPatients(d.entry || []))
+      .catch(err => toast.error(err.response?.data?.detail || 'Error al cargar pacientes'))
+      .finally(() => setLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const search = async () => {
-    if (!query.trim()) return
-    setLoading(true)
+    if (!query.trim()) { setSearchRes(null); return }
+    setSearching(true)
     try {
-      const data = await api.searchPatient(query.trim())
-      setResult(data)
+      const d = await api.searchPatient(query.trim())
+      setSearchRes(d.entry || [])
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error en búsqueda')
-    } finally { setLoading(false) }
+    } finally { setSearching(false) }
   }
 
-  const patients = result?.entry || []
+  const displayList = searchRes !== null ? searchRes : (patients || [])
+
+  const PatientCard = ({ p }) => (
+    <div
+      className={`su-patient-card su-patient-card--clickable ${selectedPat?.id === p.id ? 'su-patient-card--selected' : ''}`}
+      onClick={() => onSelectPatient(p)}
+    >
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+        <div className="su-patient-name">{p.name?.[0]?.text || '—'}</div>
+        {selectedPat?.id === p.id && <span className="badge badge-purple" style={{fontSize:'0.6rem'}}>Seleccionado</span>}
+      </div>
+      <div className="su-patient-meta">
+        {p.identifier?.[0]?.value && (
+          <span>CC: <code style={{fontSize:'0.68rem',color:'var(--cyan)'}}>{p.identifier[0].value}</code></span>
+        )}
+        <span>Nac: {p.birthDate || '—'}</span>
+      </div>
+    </div>
+  )
 
   return (
     <div>
-      <h3 style={{marginBottom:'0.5rem',color:'var(--text-1)'}}>Buscar Paciente</h3>
+      <h3 style={{marginBottom:'0.25rem',color:'var(--text-1)'}}>Mis Pacientes Asignados</h3>
       <p style={{fontSize:'0.8rem',color:'var(--text-3)',marginBottom:'1rem'}}>
-        Busca por nombre <strong>o</strong> número de cédula (ej: <code>CC|12345678</code> o solo el número).
-        Haz clic en un resultado para seleccionarlo.
+        Solo puedes acceder a los pacientes asignados por el administrador.
+        Haz clic en un paciente para seleccionarlo y consultar sus datos.
       </p>
+
       <div className="flex gap-2" style={{marginBottom:'1.25rem'}}>
-        <input className="input" placeholder="Nombre o CC|12345678…" value={query}
-          onChange={e => setQuery(e.target.value)}
+        <input className="input" placeholder="Buscar por nombre o CC|12345678…" value={query}
+          onChange={e => { setQuery(e.target.value); if (!e.target.value.trim()) setSearchRes(null) }}
           onKeyDown={e => e.key === 'Enter' && search()} />
-        <button className="btn btn-primary" onClick={search} disabled={loading || !query.trim()}>
-          {loading ? <div className="spinner" /> : 'Buscar'}
+        <button className="btn btn-primary" onClick={search} disabled={searching || !query.trim()}>
+          {searching ? <div className="spinner" /> : 'Buscar'}
         </button>
+        {searchRes !== null && (
+          <button className="btn btn-ghost" onClick={() => { setQuery(''); setSearchRes(null) }}>
+            Limpiar
+          </button>
+        )}
       </div>
 
-      {result && (
-        patients.length > 0 ? (
-          <div>
-            <div style={{fontSize:'0.75rem',color:'var(--text-3)',marginBottom:'0.75rem'}}>{result.total} resultado(s)</div>
-            {patients.map((p, i) => p && (
-              <div key={i}
-                className={`su-patient-card su-patient-card--clickable ${selectedPat?.id === p.id ? 'su-patient-card--selected' : ''}`}
-                onClick={() => onSelectPatient(p)}
-              >
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-                  <div className="su-patient-name">{p.name?.[0]?.text || '—'}</div>
-                  {selectedPat?.id === p.id && <span className="badge badge-purple" style={{fontSize:'0.6rem'}}>Seleccionado</span>}
-                </div>
-                <div className="su-patient-meta">
-                  {p.identifier?.[0]?.value && (
-                    <span>CC: <code style={{fontSize:'0.68rem',color:'var(--cyan)'}}>{p.identifier[0].value}</code></span>
-                  )}
-                  <span>Nac: {p.birthDate || '—'}</span>
-                  <span>ID: <code style={{fontSize:'0.65rem',color:'var(--text-secondary)'}}>{p.id}</code></span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{color:'var(--text-3)',fontSize:'0.85rem'}}>No se encontraron pacientes.</div>
-        )
+      {loading ? (
+        <div style={{color:'var(--text-3)',fontSize:'0.85rem'}}>Cargando…</div>
+      ) : displayList.length > 0 ? (
+        <div>
+          {searchRes !== null && (
+            <div style={{fontSize:'0.75rem',color:'var(--text-3)',marginBottom:'0.75rem'}}>
+              {searchRes.length} resultado(s) en tus pacientes asignados
+            </div>
+          )}
+          {displayList.map((p, i) => p && <PatientCard key={i} p={p} />)}
+        </div>
+      ) : (
+        <div style={{
+          padding:'2.5rem',textAlign:'center',color:'var(--text-3)',
+          background:'rgba(255,255,255,0.02)',borderRadius:10,border:'1px dashed var(--border)'
+        }}>
+          {searchRes !== null
+            ? 'No se encontraron pacientes con ese criterio en tu lista.'
+            : 'No tienes pacientes asignados. Contacta al administrador.'}
+        </div>
       )}
+    </div>
+  )
+}
+
+/* ── Agente ──────────────────────────────────────────────────────────────── */
+const RAG_MODES = [
+  { value: 'hybrid',  label: 'Hybrid RAG' },
+  { value: 'naive',   label: 'Naive RAG' },
+  { value: 'rerank',  label: 'Advanced RAG' },
+  { value: 'agentic', label: 'Agentic RAG' },
+]
+
+function AgentTab({ api, selectedPat }) {
+  const [messages,  setMessages]  = useState([])
+  const [input,     setInput]     = useState('')
+  const [mode,      setMode]      = useState('hybrid')
+  const [loading,   setLoading]   = useState(false)
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID())
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || loading) return
+    const userMsg = { role: 'user', content: text }
+    setMessages(m => [...m, userMsg])
+    setInput('')
+    setLoading(true)
+    try {
+      const body = { message: text, session_id: sessionId, mode }
+      if (selectedPat) body.patient_id = selectedPat.id
+      const data = await api.agentChat(body)
+      setMessages(m => [...m, {
+        role: 'assistant',
+        content: data.response || data.answer || data.message || JSON.stringify(data),
+        sources: data.sources || [],
+        rag_mode: data.rag_mode || mode,
+        elapsed: data.elapsed_ms,
+      }])
+    } catch (err) {
+      const detail = err.response?.data?.detail || 'Error al consultar el agente'
+      setMessages(m => [...m, { role: 'assistant', content: `Error: ${detail}`, error: true }])
+    } finally { setLoading(false) }
+  }
+
+  const clearSession = () => {
+    setMessages([])
+    setSessionId(crypto.randomUUID())
+  }
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100%',minHeight:480}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.75rem',flexWrap:'wrap',gap:'0.5rem'}}>
+        <div>
+          <h3 style={{margin:0,color:'var(--text-1)'}}>Agente Clínico</h3>
+          {selectedPat && (
+            <div style={{fontSize:'0.75rem',color:'var(--text-3)',marginTop:'2px'}}>
+              Contexto: <strong style={{color:'var(--cyan)'}}>{selectedPat.name?.[0]?.text}</strong>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2" style={{alignItems:'center'}}>
+          {RAG_MODES.map(m => (
+            <button key={m.value}
+              className={`pill ${mode === m.value ? 'pill--active' : ''}`}
+              style={{fontSize:'0.7rem'}}
+              onClick={() => setMode(m.value)}>
+              {m.label}
+            </button>
+          ))}
+          <button className="btn btn-ghost btn-sm" onClick={clearSession} style={{fontSize:'0.72rem'}}>
+            Nueva sesión
+          </button>
+        </div>
+      </div>
+
+      <div style={{
+        flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:'0.75rem',
+        padding:'0.75rem', background:'rgba(0,0,0,0.15)', borderRadius:10,
+        border:'1px solid var(--border)', minHeight:320, marginBottom:'0.75rem',
+      }}>
+        {messages.length === 0 && (
+          <div style={{margin:'auto',textAlign:'center',color:'var(--text-3)',fontSize:'0.82rem'}}>
+            <div style={{fontSize:'2rem',marginBottom:'0.5rem'}}>🤖</div>
+            <div>Haz una pregunta sobre los pacientes asignados.</div>
+            {!selectedPat && <div style={{marginTop:'0.25rem',fontSize:'0.75rem'}}>Selecciona un paciente para dar contexto específico.</div>}
+          </div>
+        )}
+        {messages.map((msg, i) => (
+          <div key={i} style={{
+            display:'flex', flexDirection:'column',
+            alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
+          }}>
+            <div style={{
+              maxWidth:'85%', padding:'0.6rem 0.9rem', borderRadius:10,
+              background: msg.role === 'user'
+                ? 'rgba(56,189,248,0.15)'
+                : msg.error ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${msg.role === 'user' ? 'rgba(56,189,248,0.3)' : msg.error ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
+              fontSize:'0.82rem', color:'var(--text-1)', whiteSpace:'pre-wrap', lineHeight:1.6,
+            }}>
+              {msg.content}
+            </div>
+            {msg.sources?.length > 0 && (
+              <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginTop:'0.3rem'}}>
+                {msg.sources.map(s => (
+                  <span key={s} style={{fontSize:'0.65rem',padding:'1px 6px',borderRadius:99,
+                    background:'rgba(168,85,247,0.1)',color:'#c084fc',border:'1px solid rgba(168,85,247,0.2)'}}>
+                    {s}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {loading && (
+          <div style={{display:'flex',alignItems:'center',gap:'0.4rem',color:'var(--text-3)',fontSize:'0.78rem'}}>
+            <div className="spinner" /> Consultando agente…
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      <div className="flex gap-2">
+        <input className="input" style={{flex:1}}
+          placeholder="Escribe tu consulta clínica…"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+          disabled={loading}
+        />
+        <button className="btn btn-primary" onClick={send} disabled={loading || !input.trim()}>
+          {loading ? <div className="spinner" /> : 'Enviar'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -434,6 +617,10 @@ function ObservationsTab({ api, selectedPat }) {
   const [saving,     setSaving]     = useState(false)
   const [showCreate, setShowCreate] = useState(false)
 
+  // Carga automática al abrir el tab con un paciente seleccionado
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selectedPat) fetch_() }, [selectedPat?.id])
+
   const fetch_ = async () => {
     if (!selectedPat) return
     setLoading(true)
@@ -466,7 +653,7 @@ function ObservationsTab({ api, selectedPat }) {
     } finally { setSaving(false) }
   }
 
-  const obs = result?.entry?.map(e => e.resource) || result?.entry || []
+  const obs = result?.entry?.map(e => e.resource ?? e) || []
 
   return (
     <div>
@@ -546,7 +733,7 @@ function ObservationsTab({ api, selectedPat }) {
 }
 
 /* ── Inferencia ──────────────────────────────────────────────────────────── */
-function InferenceTab({ api, selectedPat }) {
+function InferenceTab({ api, selectedPat, onGoReports }) {
   const [modelType, setModelType] = useState('diabetes')
   const [features,  setFeatures]  = useState(`{
   "Pregnancies": 2,
@@ -621,8 +808,16 @@ function InferenceTab({ api, selectedPat }) {
           <span className="badge" style={{backgroundColor: catColor, color:'#fff', marginTop:'0.5rem'}}>
             {cat || 'Sin categoría'}
           </span>
-          {result.fhir_risk_assessment && (
-            <span className="badge badge-info" style={{marginTop:'0.25rem'}}>RiskAssessment FHIR generado</span>
+          {result.report_id && (
+            <div style={{marginTop:'0.75rem',width:'100%',textAlign:'left',background:'rgba(6,182,212,0.08)',borderRadius:8,padding:'8px 12px'}}>
+              <div style={{fontSize:'0.7rem',color:'var(--text-3)',marginBottom:2}}>Reporte guardado</div>
+              <code style={{fontSize:'0.7rem',color:'#06b6d4',wordBreak:'break-all'}}>{result.report_id}</code>
+              <div style={{marginTop:6}}>
+                <button className="btn btn-ghost btn-sm" style={{fontSize:'0.72rem'}} onClick={onGoReports}>
+                  Ver y firmar en Reportes →
+                </button>
+              </div>
+            </div>
           )}
           {result.shap_values && Object.keys(result.shap_values).length > 0 && (
             <div style={{marginTop:'0.75rem',width:'100%',textAlign:'left'}}>
@@ -636,6 +831,144 @@ function InferenceTab({ api, selectedPat }) {
             </div>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Reportes ────────────────────────────────────────────────────────────── */
+function ReportsTab({ api, selectedPat }) {
+  const [reports,    setReports]    = useState(null)
+  const [loading,    setLoading]    = useState(false)
+  const [signing,    setSigning]    = useState(null)   // rid being signed
+  const [signForm,   setSignForm]   = useState({})     // rid → {action, notes, rejection_reason}
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selectedPat) load() }, [selectedPat?.id])
+
+  const load = async () => {
+    if (!selectedPat) return
+    setLoading(true)
+    try {
+      const data = await api.getRiskReports(selectedPat.id)
+      setReports(data)
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al cargar reportes')
+    } finally { setLoading(false) }
+  }
+
+  const sign = async (rid) => {
+    const form = signForm[rid] || {}
+    if (!form.action) { toast.error('Selecciona una acción (ACCEPTED/REJECTED)'); return }
+    setSigning(rid)
+    try {
+      await api.signReport(rid, { action: form.action, notes: form.notes || null, rejection_reason: form.rejection_reason || null })
+      toast.success(`Reporte ${form.action === 'ACCEPTED' ? 'aceptado' : 'rechazado'}`)
+      setSignForm(f => ({ ...f, [rid]: {} }))
+      load()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al firmar')
+    } finally { setSigning(null) }
+  }
+
+  const setField = (rid, key, val) =>
+    setSignForm(f => ({ ...f, [rid]: { ...(f[rid] || {}), [key]: val } }))
+
+  const catColor = (cat) =>
+    cat === 'HIGH' || cat === 'CRITICAL' ? 'var(--danger)' :
+    cat === 'MEDIUM' ? 'var(--warning)' : 'var(--success)'
+
+  return (
+    <div>
+      <h3 style={{marginBottom:'0.5rem',color:'var(--text-1)'}}>Reportes de Riesgo</h3>
+
+      {!selectedPat ? (
+        <div className="alert alert-warning" style={{fontSize:'0.78rem'}}>
+          Selecciona un paciente antes de ver sus reportes.
+        </div>
+      ) : (
+        <>
+          <div className="su-context-banner" style={{marginBottom:'1rem'}}>
+            Paciente: <strong>{selectedPat.name?.[0]?.text}</strong>
+          </div>
+          <button className="btn btn-ghost btn-sm" style={{marginBottom:'1rem'}} onClick={load} disabled={loading}>
+            {loading ? <><div className="spinner"/>Cargando…</> : '↻ Cargar reportes'}
+          </button>
+
+          {reports && (
+            reports.entry.length === 0
+              ? <div style={{color:'var(--text-3)',fontSize:'0.85rem'}}>No hay reportes registrados.</div>
+              : <div style={{display:'flex',flexDirection:'column',gap:'0.75rem'}}>
+                  {reports.entry.map(r => (
+                    <div key={r.id} style={{
+                      background: 'var(--surface-2,#1e293b)',
+                      borderRadius: 10, padding: '12px 14px',
+                      border: r.pending ? '1px solid #334155' : '1px solid #1e3a5f',
+                    }}>
+                      {/* Header del reporte */}
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                          <span className="badge" style={{background:'#0e3a4a',color:'#06b6d4',fontSize:'0.65rem'}}>{r.model_type}</span>
+                          {r.risk_category && (
+                            <span className="badge" style={{background: catColor(r.risk_category), color:'#fff', fontSize:'0.65rem'}}>
+                              {r.risk_category}
+                            </span>
+                          )}
+                          {r.is_critical && <span className="badge" style={{background:'#7f1d1d',color:'#fca5a5',fontSize:'0.65rem'}}>⚠ CRÍTICO</span>}
+                        </div>
+                        <span style={{fontSize:'0.68rem',color:'var(--text-3)'}}>{r.created_at?.slice(0,10)}</span>
+                      </div>
+
+                      <div style={{fontSize:'0.72rem',color:'var(--text-3)',marginBottom:4}}>
+                        Score: <strong style={{color:'var(--text-1)'}}>{r.risk_score !== null ? (r.risk_score * 100).toFixed(1) + '%' : '—'}</strong>
+                        <span style={{marginLeft:12}}>ID: <code style={{fontSize:'0.65rem'}}>{r.id.slice(0,8)}…</code></span>
+                      </div>
+
+                      {/* Estado de firma */}
+                      {!r.pending ? (
+                        <div style={{marginTop:6,fontSize:'0.72rem',color: r.doctor_action === 'ACCEPTED' ? 'var(--success)' : 'var(--danger)'}}>
+                          {r.doctor_action === 'ACCEPTED' ? '✓ Aceptado' : '✗ Rechazado'}
+                          {r.signed_at && <span style={{color:'var(--text-3)',marginLeft:8}}>{r.signed_at.slice(0,10)}</span>}
+                          {r.signed_by_name && <span style={{color:'var(--text-3)',marginLeft:8}}>por {r.signed_by_name}</span>}
+                          {r.doctor_notes && <div style={{color:'var(--text-2)',marginTop:2}}>{r.doctor_notes}</div>}
+                        </div>
+                      ) : (
+                        /* Formulario de firma */
+                        <div style={{marginTop:8,borderTop:'1px solid #334155',paddingTop:8}}>
+                          <div style={{fontSize:'0.72rem',color:'#fbbf24',marginBottom:6}}>⏳ Pendiente de firma</div>
+                          <div style={{display:'flex',gap:8,marginBottom:6}}>
+                            {['ACCEPTED','REJECTED'].map(a => (
+                              <button key={a}
+                                className={`btn btn-sm ${signForm[r.id]?.action === a ? (a==='ACCEPTED'?'btn-success':'btn-danger') : 'btn-ghost'}`}
+                                style={{fontSize:'0.72rem'}}
+                                onClick={() => setField(r.id,'action',a)}
+                              >
+                                {a === 'ACCEPTED' ? '✓ Aceptar' : '✗ Rechazar'}
+                              </button>
+                            ))}
+                          </div>
+                          <input className="input" style={{fontSize:'0.75rem',padding:'5px 8px',marginBottom:4}}
+                            placeholder="Notas del médico (opcional)"
+                            value={signForm[r.id]?.notes || ''}
+                            onChange={e => setField(r.id,'notes',e.target.value)} />
+                          {signForm[r.id]?.action === 'REJECTED' && (
+                            <input className="input" style={{fontSize:'0.75rem',padding:'5px 8px',marginBottom:4}}
+                              placeholder="Razón de rechazo"
+                              value={signForm[r.id]?.rejection_reason || ''}
+                              onChange={e => setField(r.id,'rejection_reason',e.target.value)} />
+                          )}
+                          <button className="btn btn-primary btn-sm" style={{marginTop:4,fontSize:'0.72rem'}}
+                            onClick={() => sign(r.id)}
+                            disabled={signing === r.id || !signForm[r.id]?.action}>
+                            {signing === r.id ? <><div className="spinner"/>Firmando…</> : 'Confirmar firma'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+          )}
+        </>
       )}
     </div>
   )

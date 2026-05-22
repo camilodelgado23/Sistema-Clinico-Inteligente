@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { adminAPI, assignmentAPI, arcoAPI, ragAPI } from '../services/api'
+import { adminAPI, assignmentAPI, practitionerAssignmentAPI, arcoAPI, ragAPI, fhirAPI } from '../services/api'
 import './AdminPanel.css'
 
 // ── Umbrales por defecto ───────────────────────────────────────────────────────
@@ -588,6 +588,169 @@ function MigrationPanel() {
               </button>
             </>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Sección Pacientes ─────────────────────────────────────────────────────────
+function PatientsSection() {
+  const [patients,     setPatients]     = useState([])
+  const [total,        setTotal]        = useState(0)
+  const [loading,      setLoading]      = useState(true)
+  const [page,         setPage]         = useState(0)
+  const [showDeleted,  setShowDeleted]  = useState(false)
+  const LIMIT = 10
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const { data } = await fhirAPI.listPatients({
+        limit: LIMIT,
+        offset: page * LIMIT,
+        include_deleted: showDeleted,
+      })
+      setPatients(data.entry || [])
+      setTotal(data.total)
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [page, showDeleted])
+
+  useEffect(() => { load() }, [load])
+
+  const softDelete = async (p) => {
+    if (!confirm(`¿Eliminar (soft-delete) al paciente "${p.name}"?\nEsto marcará su HC como inactiva y sus observaciones como entered-in-error.`)) return
+    try {
+      await fhirAPI.deletePatient(p.id)
+      load()
+    } catch (e) { alert(e.response?.data?.detail || 'Error al eliminar') }
+  }
+
+  const restore = async (p) => {
+    if (!confirm(`¿Restaurar al paciente "${p.name}"?`)) return
+    try {
+      await fhirAPI.restorePatient(p.id)
+      load()
+    } catch (e) { alert(e.response?.data?.detail || 'Error al restaurar') }
+  }
+
+  const totalPages = Math.ceil(total / LIMIT)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <h3 style={{ margin: 0 }}>Pacientes ({total})</h3>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem',
+            fontSize: '0.78rem', color: showDeleted ? 'var(--danger)' : 'var(--text-tertiary)',
+            fontFamily: 'var(--font-mono)', cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={showDeleted}
+              onChange={e => { setShowDeleted(e.target.checked); setPage(0) }}
+              style={{ accentColor: 'var(--danger)', cursor: 'pointer' }}
+            />
+            Mostrar eliminados
+          </label>
+        </div>
+      </div>
+
+      {showDeleted && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+          background: 'rgba(220,38,38,0.07)', border: '1px solid rgba(220,38,38,0.3)',
+          borderRadius: 'var(--radius-sm)', padding: '0.5rem 0.875rem',
+          fontSize: '0.8rem', color: '#fca5a5',
+        }}>
+          🗑 Mostrando todos los pacientes, incluidos los eliminados con soft-delete.
+        </div>
+      )}
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Fecha nacimiento</th>
+                <th>Estado</th>
+                <th>Creado</th>
+                {showDeleted && <th>Eliminado</th>}
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={showDeleted ? 6 : 5} style={{ textAlign: 'center', padding: '2rem',
+                  color: 'var(--text-tertiary)' }}>Cargando…</td></tr>
+              ) : patients.length === 0 ? (
+                <tr><td colSpan={showDeleted ? 6 : 5} style={{ textAlign: 'center', padding: '2rem',
+                  color: 'var(--text-tertiary)' }}>Sin pacientes</td></tr>
+              ) : patients.map(p => {
+                const isDeleted = !!p.deleted_at
+                return (
+                  <tr key={p.id} style={isDeleted ? { opacity: 0.6, background: 'rgba(220,38,38,0.04)' } : {}}>
+                    <td style={{ fontWeight: 500 }}>
+                      {p.name}
+                      {isDeleted && (
+                        <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem',
+                          color: 'var(--danger)', fontFamily: 'var(--font-mono)' }}>
+                          [eliminado]
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                      {p.birth_date || '—'}
+                    </td>
+                    <td>
+                      <span className={`badge ${isDeleted ? '' : p.is_active ? 'badge-success' : 'badge-warning'}`}
+                        style={isDeleted ? { background: 'rgba(220,38,38,0.15)',
+                          color: 'var(--danger)', border: '1px solid rgba(220,38,38,0.3)' } : {}}>
+                        {isDeleted ? 'Eliminado' : p.is_active ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                      {p.created_at ? new Date(p.created_at).toLocaleDateString('es-CO') : '—'}
+                    </td>
+                    {showDeleted && (
+                      <td style={{ color: 'var(--danger)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>
+                        {isDeleted ? new Date(p.deleted_at).toLocaleDateString('es-CO') : '—'}
+                      </td>
+                    )}
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.375rem' }}>
+                        {isDeleted ? (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ color: 'var(--success)', borderColor: 'rgba(34,197,94,0.3)' }}
+                            onClick={() => restore(p)}
+                          >
+                            ♻ Restaurar
+                          </button>
+                        ) : (
+                          <button className="btn btn-ghost btn-sm"
+                            style={{ color: 'var(--danger)' }}
+                            onClick={() => softDelete(p)}
+                            title="Eliminar HC (soft-delete)">🗑</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {totalPages > 1 && (
+        <div className="pagination">
+          <button className="btn btn-ghost" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Ant.</button>
+          <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+            {page + 1} / {totalPages}
+          </span>
+          <button className="btn btn-ghost" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Sig. →</button>
         </div>
       )}
     </div>
@@ -1497,6 +1660,222 @@ function ArcoSection() {
   )
 }
 
+// ── Sección Asignaciones de Médicos Externos ──────────────────────────────────
+function PractitionerAssignmentsSection() {
+  const [assignments,    setAssignments]    = useState([])
+  const [practitioners,  setPractitioners]  = useState([])
+  const [patients,       setPatients]       = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [saving,         setSaving]         = useState(false)
+  const [filterPract,    setFilterPract]    = useState('')
+  const [form,           setForm]           = useState({ practitioner_id: '', patient_id: '' })
+  const [error,          setError]          = useState('')
+  const [success,        setSuccess]        = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = {}
+      if (filterPract) params.practitioner_id = filterPract
+      const [aRes, prRes, pRes] = await Promise.all([
+        practitionerAssignmentAPI.list(params),
+        assignmentAPI.listPractitioners(),
+        assignmentAPI.listPatients(),
+      ])
+      setAssignments(aRes.data.entry || [])
+      setPractitioners(prRes.data)
+      setPatients(pRes.data)
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [filterPract])
+
+  useEffect(() => { load() }, [load])
+
+  const handleAssign = async () => {
+    if (!form.practitioner_id || !form.patient_id) return
+    setSaving(true)
+    setError('')
+    setSuccess('')
+    try {
+      await practitionerAssignmentAPI.create(form)
+      setSuccess('Paciente asignado correctamente al médico externo.')
+      setForm({ practitioner_id: '', patient_id: '' })
+      load()
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Error al asignar')
+    } finally { setSaving(false) }
+  }
+
+  const handleRemove = async (aid, patName, practName) => {
+    if (!confirm(`¿Quitar la asignación de "${patName}" al médico externo "${practName}"?`)) return
+    try {
+      await practitionerAssignmentAPI.remove(aid)
+      load()
+    } catch (e) { alert(e.response?.data?.detail || 'Error al quitar asignación') }
+  }
+
+  const assignedPatientsByPract = assignments.reduce((acc, a) => {
+    if (!acc[a.practitioner_id]) acc[a.practitioner_id] = 0
+    acc[a.practitioner_id]++
+    return acc
+  }, {})
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-icon">🔗</span>
+          <h3>Asignar paciente a médico externo</h3>
+        </div>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginBottom: '1rem' }}>
+          El médico externo solo podrá ver y consultar el Agente sobre los pacientes aquí asignados.
+        </p>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label className="form-label">Médico externo</label>
+            <select className="input" value={form.practitioner_id}
+              onChange={e => setForm(f => ({ ...f, practitioner_id: e.target.value }))}>
+              <option value="">— Seleccionar médico externo —</option>
+              {practitioners.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.full_name} · {p.license_number}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label className="form-label">Paciente</label>
+            <select className="input" value={form.patient_id}
+              onChange={e => setForm(f => ({ ...f, patient_id: e.target.value }))}>
+              <option value="">— Seleccionar paciente —</option>
+              {patients.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <button className="btn btn-primary"
+            disabled={saving || !form.practitioner_id || !form.patient_id}
+            onClick={handleAssign}>
+            {saving ? 'Guardando…' : '+ Asignar'}
+          </button>
+        </div>
+        {error   && <div style={{ marginTop: '0.5rem', color: 'var(--danger)', fontSize: '0.85rem' }}>{error}</div>}
+        {success && <div style={{ marginTop: '0.5rem', color: 'var(--success)', fontSize: '0.85rem' }}>✅ {success}</div>}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label className="form-label" style={{ margin: 0 }}>Filtrar por médico externo:</label>
+          <select className="input" style={{ width: 260 }} value={filterPract}
+            onChange={e => setFilterPract(e.target.value)}>
+            <option value="">— Todos —</option>
+            {practitioners.map(p => (
+              <option key={p.id} value={p.id}>{p.full_name}</option>
+            ))}
+          </select>
+        </div>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+          {assignments.length} asignación{assignments.length !== 1 ? 'es' : ''}
+        </span>
+        {filterPract && (
+          <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }}
+            onClick={() => setFilterPract('')}>Limpiar filtro</button>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Paciente</th><th>Médico externo</th>
+                <th>Licencia</th><th>Asignado por</th><th>Fecha</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem',
+                  color: 'var(--text-tertiary)' }}>Cargando…</td></tr>
+              ) : assignments.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2.5rem',
+                  color: 'var(--text-tertiary)' }}>
+                  {filterPract
+                    ? 'Este médico externo no tiene pacientes asignados aún.'
+                    : 'No hay asignaciones. Crea una arriba.'}
+                </td></tr>
+              ) : assignments.map(a => (
+                <tr key={a.id}>
+                  <td style={{ fontWeight: 500 }}>{a.patient_name}</td>
+                  <td>
+                    <span className="badge badge-purple" style={{ fontSize: '0.75rem' }}>
+                      {a.practitioner_name}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                    {a.license_number}
+                  </td>
+                  <td style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                    {a.assigned_by || '—'}
+                  </td>
+                  <td style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)',
+                    fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
+                    {new Date(a.assigned_at).toLocaleString('es-CO')}
+                  </td>
+                  <td>
+                    <button className="btn btn-ghost btn-sm"
+                      style={{ color: 'var(--danger)', fontSize: '0.8rem' }}
+                      onClick={() => handleRemove(a.id, a.patient_name, a.practitioner_name)}
+                      title="Quitar asignación">
+                      ✕ Quitar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {!filterPract && practitioners.length > 0 && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-icon">📋</span>
+            <h3>Resumen por médico externo</h3>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+            {practitioners.map(p => {
+              const count = assignedPatientsByPract[p.id] || 0
+              return (
+                <div key={p.id} onClick={() => setFilterPract(p.id)}
+                  style={{
+                    background: 'var(--surface-2)', border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-sm)', padding: '0.625rem 1rem',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.625rem',
+                    transition: 'border-color 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-active)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
+                >
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{p.full_name}</span>
+                  <span style={{
+                    background: count > 0 ? 'rgba(168,85,247,0.15)' : 'var(--surface-1)',
+                    color: count > 0 ? '#c084fc' : 'var(--text-tertiary)',
+                    border: `1px solid ${count > 0 ? 'rgba(168,85,247,0.3)' : 'var(--border-subtle)'}`,
+                    borderRadius: '999px', padding: '0.1rem 0.5rem',
+                    fontSize: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: 700,
+                  }}>
+                    {count} pac.
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Sección Médicos Externos (Practitioners) ──────────────────────────────────
 function PractitionersSection() {
   const [practitioners, setPractitioners] = useState([])
@@ -2022,7 +2401,7 @@ export default function AdminPanel() {
   const [alertsDismissed, setAlertsDismissed] = useState(false)
   const [showThresholds,  setShowThresholds]  = useState(false)
 
-  const TABS = ['Estadísticas', 'Usuarios', 'Asignaciones', 'Médicos Ext.', 'Modelos', 'Audit Log', 'ARCO']
+  const TABS = ['Estadísticas', 'Usuarios', 'Pacientes', 'Asignaciones', 'Asig. Ext.', 'Médicos Ext.', 'Modelos', 'Audit Log', 'ARCO']
 
   const loadStats = useCallback(async () => {
     try {
@@ -2156,7 +2535,9 @@ export default function AdminPanel() {
       )}
 
       {activeTab === 'Usuarios'      && <UsersSection />}
+      {activeTab === 'Pacientes'     && <PatientsSection />}
       {activeTab === 'Asignaciones'  && <AssignmentsSection />}
+      {activeTab === 'Asig. Ext.'   && <PractitionerAssignmentsSection />}
       {activeTab === 'Médicos Ext.'  && <PractitionersSection />}
       {activeTab === 'Modelos'       && <ModelsSection />}
       {activeTab === 'Audit Log'     && <AuditSection />}
