@@ -510,8 +510,13 @@ async def list_active_practitioners_for_assignment(
     db: asyncpg.Connection = Depends(get_db),
 ):
     """Lista médicos externos activos para el selector de asignación."""
+    from core.config import settings
     rows = await db.fetch(
-        "SELECT id, full_name, license_number FROM practitioners WHERE is_active = TRUE ORDER BY full_name"
+        """SELECT id,
+                  pgp_sym_decrypt(full_name_enc,      $1) AS full_name,
+                  pgp_sym_decrypt(license_number_enc, $1) AS license_number
+           FROM practitioners WHERE is_active = TRUE ORDER BY full_name_enc""",
+        settings.AES_KEY,
     )
     return [{"id": str(r["id"]), "full_name": r["full_name"], "license_number": r["license_number"]} for r in rows]
 
@@ -532,6 +537,7 @@ async def list_practitioner_assignments(
     user: dict = Depends(require_admin),
     db: asyncpg.Connection = Depends(get_db),
 ):
+    from core.config import settings as _s
     filters, params = [], []
     if practitioner_id:
         params.append(practitioner_id)
@@ -540,12 +546,15 @@ async def list_practitioner_assignments(
         params.append(patient_id)
         filters.append(f"pa.patient_id = ${len(params)}::uuid")
     where = f"WHERE {' AND '.join(filters)}" if filters else ""
-    params += [limit, offset]
+    filter_count = len(params)
+    params += [limit, offset, _s.AES_KEY]   # $N-2=limit, $N-1=offset, $N=AES_KEY
+    n = len(params)
     rows = await db.fetch(
         f"""SELECT pa.id, pa.assigned_at,
                    p.id AS patient_id, p.name AS patient_name,
-                   pr.id AS practitioner_id, pr.full_name AS practitioner_name,
-                   pr.license_number,
+                   pr.id AS practitioner_id,
+                   pgp_sym_decrypt(pr.full_name_enc,      ${n}) AS practitioner_name,
+                   pgp_sym_decrypt(pr.license_number_enc, ${n}) AS license_number,
                    ab.username AS assigned_by_username
             FROM practitioner_assignments pa
             JOIN patients p  ON p.id  = pa.patient_id
@@ -553,11 +562,11 @@ async def list_practitioner_assignments(
             LEFT JOIN users ab ON ab.id = pa.assigned_by
             {where}
             ORDER BY pa.assigned_at DESC
-            LIMIT ${len(params)-1} OFFSET ${len(params)}""",
+            LIMIT ${n-2} OFFSET ${n-1}""",
         *params,
     )
     total = await db.fetchval(
-        f"SELECT COUNT(*) FROM practitioner_assignments pa {where}", *params[:-2]
+        f"SELECT COUNT(*) FROM practitioner_assignments pa {where}", *params[:filter_count]
     )
     return {
         "total": total, "limit": limit, "offset": offset,
@@ -825,12 +834,17 @@ async def list_practitioners(
     db: asyncpg.Connection = Depends(get_db),
 ):
     """Lista todos los médicos externos (practitioners) registrados."""
+    from core.config import settings as _s
     rows = await db.fetch(
-        """SELECT id, email, license_number, full_name, specialty, is_active, created_at
+        """SELECT id,
+                  pgp_sym_decrypt(email_enc,          $3) AS email,
+                  pgp_sym_decrypt(license_number_enc, $3) AS license_number,
+                  pgp_sym_decrypt(full_name_enc,      $3) AS full_name,
+                  specialty, is_active, created_at
            FROM practitioners
            ORDER BY created_at DESC
            LIMIT $1 OFFSET $2""",
-        limit, offset,
+        limit, offset, _s.AES_KEY,
     )
     total = await db.fetchval("SELECT COUNT(*) FROM practitioners")
     return {
@@ -858,24 +872,31 @@ async def create_practitioner(
     db: asyncpg.Connection = Depends(get_db),
 ):
     """Crea un nuevo médico externo (SuperUser). Solo accesible para administradores."""
+    from core.config import settings as _s
+    from core.crypto import encrypt_value
+    import bcrypt
     existing = await db.fetchrow(
-        "SELECT id FROM practitioners WHERE email = $1 OR license_number = $2",
-        body.email, body.license_number,
+        """SELECT id FROM practitioners
+           WHERE pgp_sym_decrypt(email_enc,          $3) = $1
+              OR pgp_sym_decrypt(license_number_enc, $3) = $2""",
+        body.email, body.license_number, _s.AES_KEY,
     )
     if existing:
         raise HTTPException(status_code=409, detail="Email o número de licencia ya registrado")
 
-    import bcrypt
     pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt(rounds=12)).decode()
+    enc_email   = await encrypt_value(db, body.email)
+    enc_name    = await encrypt_value(db, body.full_name)
+    enc_license = await encrypt_value(db, body.license_number)
     row = await db.fetchrow(
-        """INSERT INTO practitioners (email, password_hash, license_number, full_name, specialty)
+        """INSERT INTO practitioners (email_enc, password_hash, license_number_enc, full_name_enc, specialty)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING id, created_at""",
-        body.email, pw_hash, body.license_number, body.full_name, body.specialty,
+        enc_email, pw_hash, enc_license, enc_name, body.specialty,
     )
     await log_audit(db, str(user["id"]), user["role"], "CREATE_PRACTITIONER", "Practitioner",
                     row["id"], request.client.host if request.client else None,
-                    detail={"email": body.email, "license": body.license_number})
+                    detail={"license": body.license_number})
     return {
         "id": str(row["id"]),
         "email": body.email,
@@ -894,7 +915,7 @@ async def toggle_practitioner(
 ):
     """Activa o desactiva un médico externo."""
     row = await db.fetchrow(
-        "SELECT id, is_active, email FROM practitioners WHERE id = $1::uuid", pid,
+        "SELECT id, is_active FROM practitioners WHERE id = $1::uuid", pid,
     )
     if not row:
         raise HTTPException(status_code=404, detail="Practitioner no encontrado")
@@ -905,8 +926,7 @@ async def toggle_practitioner(
     await log_audit(db, str(user["id"]), user["role"],
                     "ACTIVATE_PRACTITIONER" if new_status else "DEACTIVATE_PRACTITIONER",
                     "Practitioner", row["id"],
-                    request.client.host if request.client else None,
-                    detail={"email": row["email"]})
+                    request.client.host if request.client else None)
     return {"id": pid, "is_active": new_status}
 
 

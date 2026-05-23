@@ -120,8 +120,12 @@ async def require_superuser(
     if payload.get("type") != "superuser":
         raise HTTPException(status_code=403, detail="Token no es de tipo SuperUser")
     row = await db.fetchrow(
-        "SELECT id, full_name, license_number, is_active FROM practitioners WHERE id = $1::uuid",
-        payload["sub"],
+        """SELECT id,
+                  pgp_sym_decrypt(full_name_enc,      $2) AS full_name,
+                  pgp_sym_decrypt(license_number_enc, $2) AS license_number,
+                  is_active
+           FROM practitioners WHERE id = $1::uuid""",
+        payload["sub"], settings.AES_KEY,
     )
     if not row or not row["is_active"]:
         raise HTTPException(status_code=401, detail="Médico no encontrado o inactivo")
@@ -165,17 +169,20 @@ async def superuser_login(
 ):
     """Autenticación de médico SuperUser con email + password + número de licencia."""
     row = await db.fetchrow(
-        "SELECT id, password_hash, license_number, is_active FROM practitioners WHERE email = $1",
-        body.email,
+        """SELECT id, password_hash, license_number_enc, is_active
+           FROM practitioners
+           WHERE pgp_sym_decrypt(email_enc, $2) = $1""",
+        body.email, settings.AES_KEY,
     )
     if not row or not row["is_active"]:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    if row["license_number"] != body.license_number:
+    license_plain = await decrypt_value(db, bytes(row["license_number_enc"]))
+    if license_plain != body.license_number:
         raise HTTPException(status_code=401, detail="Número de licencia incorrecto")
     if not bcrypt.checkpw(body.password.encode(), row["password_hash"].encode()):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    token = create_su_token(str(row["id"]), row["license_number"])
+    token = create_su_token(str(row["id"]), license_plain)
     return {
         "access_token": token,
         "token_type": "Bearer",
@@ -191,17 +198,22 @@ async def register_practitioner(
 ):
     """Registro de médico SuperUser. Requiere rol ADMIN del sistema."""
     existing = await db.fetchrow(
-        "SELECT id FROM practitioners WHERE email = $1 OR license_number = $2",
-        body.email, body.license_number,
+        """SELECT id FROM practitioners
+           WHERE pgp_sym_decrypt(email_enc,          $3) = $1
+              OR pgp_sym_decrypt(license_number_enc, $3) = $2""",
+        body.email, body.license_number, settings.AES_KEY,
     )
     if existing:
         raise HTTPException(status_code=409, detail="Email o licencia ya registrados")
 
     pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt(rounds=12)).decode()
+    enc_email   = await encrypt_value(db, body.email)
+    enc_name    = await encrypt_value(db, body.full_name)
+    enc_license = await encrypt_value(db, body.license_number)
     row = await db.fetchrow(
-        """INSERT INTO practitioners (email, password_hash, license_number, full_name, specialty)
+        """INSERT INTO practitioners (email_enc, password_hash, license_number_enc, full_name_enc, specialty)
            VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at""",
-        body.email, pw_hash, body.license_number, body.full_name, body.specialty,
+        enc_email, pw_hash, enc_license, enc_name, body.specialty,
     )
     return {"id": str(row["id"]), "created_at": row["created_at"]}
 
@@ -629,7 +641,9 @@ async def list_risk_reports_su(
                   CASE WHEN rr.prediction_enc IS NOT NULL
                        THEN pgp_sym_decrypt(rr.prediction_enc, $2)::json->>'category'
                        ELSE rr.risk_category END AS category,
-                  su.full_name AS signed_by_name
+                  CASE WHEN su.full_name_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(su.full_name_enc, $2)
+                       ELSE NULL END AS signed_by_name
            FROM risk_reports rr
            LEFT JOIN practitioners su ON su.id = rr.signed_by_practitioner
            WHERE rr.patient_id = $1::uuid AND rr.deleted_at IS NULL

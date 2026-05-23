@@ -15,4 +15,4 @@ COPY . .
 RUN python -c "import faiss; print('FAISS OK')"
 
 EXPOSE 8004
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004", "--timeout-keep-alive", "120"]

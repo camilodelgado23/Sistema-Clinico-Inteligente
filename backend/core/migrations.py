@@ -240,6 +240,11 @@ CREATE TABLE IF NOT EXISTS practitioner_assignments (
 );
 CREATE INDEX IF NOT EXISTS idx_pract_assign_pract ON practitioner_assignments(practitioner_id);
 CREATE INDEX IF NOT EXISTS idx_pract_assign_pat   ON practitioner_assignments(patient_id);
+
+-- ── Seguridad: PII de practitioners cifrado con pgcrypto AES-256 ─────────────
+ALTER TABLE practitioners ADD COLUMN IF NOT EXISTS email_enc          BYTEA;
+ALTER TABLE practitioners ADD COLUMN IF NOT EXISTS full_name_enc      BYTEA;
+ALTER TABLE practitioners ADD COLUMN IF NOT EXISTS license_number_enc BYTEA;
 """
 
 if __name__ == "__main__":
@@ -249,6 +254,28 @@ if __name__ == "__main__":
     async def run():
         conn = await asyncpg.connect(settings.DATABASE_URL)
         await conn.execute(MIGRATION_SQL)
+
+        # Cifrar PII existente de practitioners y eliminar columnas en texto plano.
+        # Idempotente: solo actúa si la columna email (plaintext) todavía existe.
+        if settings.AES_KEY:
+            col_exists = await conn.fetchval(
+                """SELECT COUNT(*) FROM information_schema.columns
+                   WHERE table_name = 'practitioners' AND column_name = 'email'"""
+            )
+            if col_exists:
+                await conn.execute(
+                    """UPDATE practitioners
+                       SET email_enc          = pgp_sym_encrypt(email,          $1),
+                           full_name_enc      = pgp_sym_encrypt(full_name,      $1),
+                           license_number_enc = pgp_sym_encrypt(license_number, $1)
+                       WHERE email_enc IS NULL AND email IS NOT NULL""",
+                    settings.AES_KEY,
+                )
+                await conn.execute("ALTER TABLE practitioners DROP COLUMN IF EXISTS email")
+                await conn.execute("ALTER TABLE practitioners DROP COLUMN IF EXISTS full_name")
+                await conn.execute("ALTER TABLE practitioners DROP COLUMN IF EXISTS license_number")
+                print("✅ practitioners PII cifrado y columnas plaintext eliminadas")
+
         await conn.close()
         print("✅ Migrations applied successfully")
 
