@@ -906,6 +906,29 @@ async def create_practitioner(
     }
 
 
+@router.patch("/practitioners/{pid}/password")
+async def reset_practitioner_password(
+    pid: str,
+    body: dict,
+    request: Request,
+    user: dict = Depends(require_admin),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """Resetea la contraseña de un médico externo."""
+    import bcrypt as _bcrypt
+    password = body.get("password", "")
+    if len(password) < 6:
+        raise HTTPException(status_code=422, detail="La contraseña debe tener al menos 6 caracteres")
+    row = await db.fetchrow("SELECT id FROM practitioners WHERE id = $1::uuid", pid)
+    if not row:
+        raise HTTPException(status_code=404, detail="Practitioner no encontrado")
+    pw_hash = _bcrypt.hashpw(password.encode(), _bcrypt.gensalt(rounds=12)).decode()
+    await db.execute("UPDATE practitioners SET password_hash = $1 WHERE id = $2::uuid", pw_hash, pid)
+    await log_audit(db, str(user["id"]), user["role"], "RESET_PRACTITIONER_PASSWORD",
+                    "Practitioner", row["id"], request.client.host if request.client else None)
+    return {"status": "updated"}
+
+
 @router.patch("/practitioners/{pid}")
 async def toggle_practitioner(
     pid: str,

@@ -1662,30 +1662,38 @@ function ArcoSection() {
 
 // ── Sección Asignaciones de Médicos Externos ──────────────────────────────────
 function PractitionerAssignmentsSection() {
-  const [assignments,    setAssignments]    = useState([])
-  const [practitioners,  setPractitioners]  = useState([])
-  const [patients,       setPatients]       = useState([])
-  const [loading,        setLoading]        = useState(true)
-  const [saving,         setSaving]         = useState(false)
-  const [filterPract,    setFilterPract]    = useState('')
-  const [form,           setForm]           = useState({ practitioner_id: '', patient_id: '' })
-  const [error,          setError]          = useState('')
-  const [success,        setSuccess]        = useState('')
+  const [assignments,       setAssignments]       = useState([])
+  const [practitioners,     setPractitioners]     = useState([])   // active only — for dropdown
+  const [allPractitioners,  setAllPractitioners]  = useState([])   // all — for resumen
+  const [patients,          setPatients]          = useState([])
+  const [loading,           setLoading]           = useState(true)
+  const [saving,            setSaving]            = useState(false)
+  const [filterPract,       setFilterPract]       = useState('')
+  const [form,              setForm]              = useState({ practitioner_id: '', patient_id: '' })
+  const [error,             setError]             = useState('')
+  const [success,           setSuccess]           = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      const [prActiveRes, prAllRes] = await Promise.all([
+        assignmentAPI.listPractitioners(),
+        adminAPI.listPractitioners({ limit: 50 }),
+      ])
+      setPractitioners(prActiveRes.data || [])
+      setAllPractitioners(prAllRes.data?.entry || [])
+    } catch (e) { console.error('Error cargando médicos externos:', e) }
+
+    try {
       const params = {}
       if (filterPract) params.practitioner_id = filterPract
-      const [aRes, prRes, pRes] = await Promise.all([
+      const [aRes, pRes] = await Promise.all([
         practitionerAssignmentAPI.list(params),
-        assignmentAPI.listPractitioners(),
         assignmentAPI.listPatients(),
       ])
       setAssignments(aRes.data.entry || [])
-      setPractitioners(prRes.data)
-      setPatients(pRes.data)
-    } catch (e) { console.error(e) }
+      setPatients(pRes.data || [])
+    } catch (e) { console.error('Error cargando asignaciones/pacientes:', e) }
     finally { setLoading(false) }
   }, [filterPract])
 
@@ -1803,13 +1811,21 @@ function PractitionerAssignmentsSection() {
                     ? 'Este médico externo no tiene pacientes asignados aún.'
                     : 'No hay asignaciones. Crea una arriba.'}
                 </td></tr>
-              ) : assignments.map(a => (
+              ) : assignments.map(a => {
+                const practInfo = allPractitioners.find(p => p.id === a.practitioner_id)
+                const isInactive = practInfo && !practInfo.is_active
+                return (
                 <tr key={a.id}>
                   <td style={{ fontWeight: 500 }}>{a.patient_name}</td>
                   <td>
                     <span className="badge badge-purple" style={{ fontSize: '0.75rem' }}>
                       {a.practitioner_name}
                     </span>
+                    {isInactive && (
+                      <span className="badge badge-warning" style={{ fontSize: '0.7rem', marginLeft: '0.25rem' }}>
+                        Inactivo
+                      </span>
+                    )}
                   </td>
                   <td style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
                     {a.license_number}
@@ -1830,33 +1846,41 @@ function PractitionerAssignmentsSection() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {!filterPract && practitioners.length > 0 && (
+      {!filterPract && allPractitioners.length > 0 && (
         <div className="card">
           <div className="card-header">
             <span className="card-icon">📋</span>
             <h3>Resumen por médico externo</h3>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-            {practitioners.map(p => {
+            {allPractitioners.map(p => {
               const count = assignedPatientsByPract[p.id] || 0
               return (
                 <div key={p.id} onClick={() => setFilterPract(p.id)}
                   style={{
-                    background: 'var(--surface-2)', border: '1px solid var(--border-subtle)',
+                    background: 'var(--surface-2)',
+                    border: `1px solid ${p.is_active ? 'var(--border-subtle)' : 'var(--border-danger, rgba(239,68,68,0.3))'}`,
                     borderRadius: 'var(--radius-sm)', padding: '0.625rem 1rem',
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.625rem',
                     transition: 'border-color 0.15s',
+                    opacity: p.is_active ? 1 : 0.65,
                   }}
                   onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-active)'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = p.is_active ? 'var(--border-subtle)' : 'rgba(239,68,68,0.3)'}
                 >
                   <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{p.full_name}</span>
+                  {!p.is_active && (
+                    <span style={{ fontSize: '0.65rem', color: 'var(--warning, #f59e0b)', fontFamily: 'var(--font-mono)' }}>
+                      inactivo
+                    </span>
+                  )}
                   <span style={{
                     background: count > 0 ? 'rgba(168,85,247,0.15)' : 'var(--surface-1)',
                     color: count > 0 ? '#c084fc' : 'var(--text-tertiary)',
@@ -1877,11 +1901,12 @@ function PractitionerAssignmentsSection() {
 }
 
 // ── Sección Médicos Externos (Practitioners) ──────────────────────────────────
-function PractitionersSection() {
+function PractitionersSection({ onChanged }) {
   const [practitioners, setPractitioners] = useState([])
   const [total,         setTotal]         = useState(0)
   const [loading,       setLoading]       = useState(true)
   const [showCreate,    setShowCreate]    = useState(false)
+  const [resetPwdId,    setResetPwdId]    = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1898,13 +1923,20 @@ function PractitionersSection() {
   const toggle = async (p) => {
     try {
       await adminAPI.togglePractitioner(p.id)
-      load()
+      await load()
+      onChanged?.()
     } catch (e) { alert(e.response?.data?.detail || 'Error') }
+  }
+
+  const handleCreated = async () => {
+    await load()
+    onChanged?.()
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      {showCreate && <CreatePractitionerModal onClose={() => setShowCreate(false)} onCreated={load} />}
+      {showCreate  && <CreatePractitionerModal onClose={() => setShowCreate(false)} onCreated={handleCreated} />}
+      {resetPwdId  && <ResetPractitionerPasswordModal pid={resetPwdId} onClose={() => setResetPwdId(null)} />}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
@@ -1951,12 +1983,18 @@ function PractitionersSection() {
                   <td style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
                     {new Date(p.created_at).toLocaleDateString('es-CO')}
                   </td>
-                  <td>
+                  <td style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                     <button className="btn btn-ghost btn-sm"
                       style={{ color: p.is_active ? 'var(--danger)' : 'var(--success)' }}
                       onClick={() => toggle(p)}
                       title={p.is_active ? 'Desactivar acceso' : 'Activar acceso'}>
                       {p.is_active ? '⏸ Desactivar' : '▶ Activar'}
+                    </button>
+                    <button className="btn btn-ghost btn-sm"
+                      style={{ color: 'var(--text-secondary)' }}
+                      onClick={() => setResetPwdId(p.id)}
+                      title="Cambiar contraseña">
+                      🔑 Clave
                     </button>
                   </td>
                 </tr>
@@ -1964,6 +2002,52 @@ function PractitionersSection() {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function ResetPractitionerPasswordModal({ pid, onClose }) {
+  const [pwd,     setPwd]     = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [saving,  setSaving]  = useState(false)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (pwd.length < 6) { alert('La contraseña debe tener al menos 6 caracteres'); return }
+    if (pwd !== confirm) { alert('Las contraseñas no coinciden'); return }
+    setSaving(true)
+    try {
+      await adminAPI.resetPractitionerPassword(pid, pwd)
+      alert('Contraseña actualizada correctamente.')
+      onClose()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al cambiar contraseña')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
+        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Cambiar contraseña</h3>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div>
+            <label className="form-label">Nueva contraseña</label>
+            <input className="input" type="password" value={pwd}
+              onChange={e => setPwd(e.target.value)} minLength={6} required />
+          </div>
+          <div>
+            <label className="form-label">Confirmar contraseña</label>
+            <input className="input" type="password" value={confirm}
+              onChange={e => setConfirm(e.target.value)} minLength={6} required />
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Guardando…' : 'Cambiar contraseña'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )
@@ -2394,12 +2478,13 @@ function ModelsSection() {
 
 // ── Main AdminPanel ───────────────────────────────────────────────────────────
 export default function AdminPanel() {
-  const [stats,           setStats]           = useState(null)
-  const [activeTab,       setActiveTab]       = useState('Usuarios')
-  const [thresholds,      setThresholds]      = useState(loadThresholds)
-  const [alerts,          setAlerts]          = useState([])
-  const [alertsDismissed, setAlertsDismissed] = useState(false)
-  const [showThresholds,  setShowThresholds]  = useState(false)
+  const [stats,                setStats]                = useState(null)
+  const [activeTab,            setActiveTab]            = useState('Usuarios')
+  const [thresholds,           setThresholds]           = useState(loadThresholds)
+  const [alerts,               setAlerts]               = useState([])
+  const [alertsDismissed,      setAlertsDismissed]      = useState(false)
+  const [showThresholds,       setShowThresholds]       = useState(false)
+  const [practitionerVersion,  setPractitionerVersion]  = useState(0)
 
   const TABS = ['Estadísticas', 'Usuarios', 'Pacientes', 'Asignaciones', 'Asig. Ext.', 'Médicos Ext.', 'Modelos', 'Audit Log', 'ARCO']
 
@@ -2466,7 +2551,10 @@ export default function AdminPanel() {
         {TABS.map(t => {
           const isActive = activeTab === t
           return (
-            <button key={t} onClick={() => setActiveTab(t)} style={{
+            <button key={t} onClick={() => {
+              setActiveTab(t)
+              if (t === 'Asig. Ext.') setPractitionerVersion(v => v + 1)
+            }} style={{
               padding: '0.45rem 1.1rem',
               borderRadius: '999px',
               border: 'none',
@@ -2537,8 +2625,8 @@ export default function AdminPanel() {
       {activeTab === 'Usuarios'      && <UsersSection />}
       {activeTab === 'Pacientes'     && <PatientsSection />}
       {activeTab === 'Asignaciones'  && <AssignmentsSection />}
-      {activeTab === 'Asig. Ext.'   && <PractitionerAssignmentsSection />}
-      {activeTab === 'Médicos Ext.'  && <PractitionersSection />}
+      {activeTab === 'Asig. Ext.'   && <PractitionerAssignmentsSection key={practitionerVersion} />}
+      {activeTab === 'Médicos Ext.'  && <PractitionersSection onChanged={() => setPractitionerVersion(v => v + 1)} />}
       {activeTab === 'Modelos'       && <ModelsSection />}
       {activeTab === 'Audit Log'     && <AuditSection />}
       {activeTab === 'ARCO'          && <ArcoSection />}

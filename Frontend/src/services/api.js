@@ -166,7 +166,8 @@ export const adminAPI = {
 
   listPractitioners:   (params) => api.get('/admin/practitioners', { params }),
   createPractitioner:  (body)   => api.post('/admin/practitioners', body),
-  togglePractitioner:  (pid)    => api.patch(`/admin/practitioners/${pid}`),
+  togglePractitioner:        (pid)      => api.patch(`/admin/practitioners/${pid}`),
+  resetPractitionerPassword: (pid, pwd) => api.patch(`/admin/practitioners/${pid}/password`, { password: pwd }),
 
   modelMetrics: () => api.get('/admin/model-metrics'),
 }

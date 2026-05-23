@@ -174,13 +174,15 @@ async def superuser_login(
            WHERE pgp_sym_decrypt(email_enc, $2) = $1""",
         body.email, settings.AES_KEY,
     )
-    if not row or not row["is_active"]:
+    if not row:
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    if not bcrypt.checkpw(body.password.encode(), row["password_hash"].encode()):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     license_plain = await decrypt_value(db, bytes(row["license_number_enc"]))
     if license_plain != body.license_number:
         raise HTTPException(status_code=401, detail="Número de licencia incorrecto")
-    if not bcrypt.checkpw(body.password.encode(), row["password_hash"].encode()):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    if not row["is_active"]:
+        raise HTTPException(status_code=403, detail="Cuenta desactivada. Contacte al administrador.")
 
     token = create_su_token(str(row["id"]), license_plain)
     return {
