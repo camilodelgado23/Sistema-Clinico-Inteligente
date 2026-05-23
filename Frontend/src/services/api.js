@@ -40,6 +40,7 @@ export const authAPI = {
       },
     }),
   logout: () => api.post('/auth/logout'),
+  me: () => api.get('/auth/me').then(r => r.data),
   acceptHabeasData: (policyVersion = '1.0') =>
     api.post('/auth/habeas-data', { policy_version: policyVersion }),
 }

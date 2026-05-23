@@ -166,25 +166,44 @@ async def query_risk_reports(patient_id: str) -> str:
     if _db_pool is None:
         return "Base de datos no disponible para consultar reportes."
     try:
+        aes_key = os.getenv("AES_KEY", "")
         async with _db_pool.acquire() as conn:
             rows = await conn.fetch(
                 """SELECT model_type, risk_score, risk_category, is_critical,
-                          doctor_action, doctor_notes, created_at
+                          doctor_action, created_at,
+                          CASE WHEN prediction_enc IS NOT NULL AND $2 != ''
+                               THEN pgp_sym_decrypt(prediction_enc, $2)
+                               ELSE NULL END AS pred_dec
                    FROM risk_reports
                    WHERE patient_id = $1::uuid AND deleted_at IS NULL
                    ORDER BY created_at DESC LIMIT 5""",
-                patient_id,
+                patient_id, aes_key,
             )
         if not rows:
             return "No hay reportes de riesgo registrados para este paciente."
+
+        import json as _json
         lines = []
         for r in rows:
-            action = r["doctor_action"] or "Pendiente revisión médica"
+            # Intentar obtener score y categoría del campo cifrado primero
+            score, category = None, r["risk_category"] or "?"
+            if r["pred_dec"]:
+                try:
+                    pred = _json.loads(r["pred_dec"])
+                    score = pred.get("score")
+                    category = pred.get("category", category)
+                except Exception:
+                    pass
+            if score is None:
+                score = r["risk_score"]
+
+            score_str = f"{float(score):.3f}" if score is not None else "N/D"
             critical = " ⚠ CRÍTICO" if r["is_critical"] else ""
+            action = r["doctor_action"] or "Pendiente revisión médica"
             date = str(r["created_at"])[:10]
             lines.append(
-                f"[{date}] {r['model_type']}: score={float(r['risk_score']):.3f} | "
-                f"{r['risk_category']}{critical} | Médico: {action}"
+                f"[{date}] {r['model_type']}: score={score_str} | "
+                f"{category}{critical} | Médico: {action}"
             )
         return "Reportes de riesgo clínico:\n" + "\n".join(lines)
     except Exception as e:

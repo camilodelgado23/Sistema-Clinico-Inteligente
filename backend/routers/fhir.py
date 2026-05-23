@@ -675,12 +675,14 @@ def _risk_to_fhir(row) -> dict:
         try:
             pred = json.loads(pred_raw)
             score = pred.get("score")
-            cat = pred.get("category", "LOW")
+            cat = pred.get("category") or row.get("risk_category", "LOW")
         except Exception:
-            score = float(row["risk_score"]) if row.get("risk_score") else None
+            score = None
             cat = row.get("risk_category", "LOW")
+        if score is None and row.get("risk_score") is not None:
+            score = float(row["risk_score"])
     else:
-        score = float(row["risk_score"]) if row.get("risk_score") else None
+        score = float(row["risk_score"]) if row.get("risk_score") is not None else None
         cat = row.get("risk_category", "LOW")
 
     # Descifrar SHAP desde shap_enc (fuente autoritativa)

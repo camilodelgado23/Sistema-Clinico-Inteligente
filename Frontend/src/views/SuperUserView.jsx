@@ -32,6 +32,15 @@ function makeSuAPI(baseUrl, token) {
       axios.patch(`${base}/api/v1/superuser/risk-reports/${rid}/sign`, body, { headers }).then(r => r.data),
     agentChat: (body) =>
       axios.post(`${base}/api/v1/superuser/agent/chat`, body, { headers }).then(r => r.data),
+    uploadImage: (patientId, file, modality) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('modality', modality)
+      return axios.post(`${base}/api/v1/superuser/patients/${patientId}/images`, fd,
+        { headers: { ...headers, 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+    },
+    listImages: (patientId) =>
+      axios.get(`${base}/api/v1/superuser/patients/${patientId}/images`, { headers }).then(r => r.data),
   }
 }
 
@@ -184,6 +193,7 @@ export default function SuperUserView() {
                   <button className="btn btn-ghost btn-sm" onClick={() => setTab('obs')}>Ver Observaciones</button>
                   <button className="btn btn-primary btn-sm" onClick={() => setTab('infer')}>Ejecutar Inferencia</button>
                   <button className="btn btn-ghost btn-sm" onClick={() => setTab('reports')}>Reportes</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setTab('images')}>Imágenes</button>
                   <button className="btn btn-ghost btn-sm" style={{color:'var(--text-4)'}} onClick={() => setSelectedPat(null)}>✕</button>
                 </div>
               </div>
@@ -210,6 +220,9 @@ export default function SuperUserView() {
                   <button className={`su-tab ${tab === 'reports' ? 'active' : ''}`} onClick={() => setTab('reports')}>
                     <span>📋</span><span>Reportes</span>
                   </button>
+                  <button className={`su-tab ${tab === 'images' ? 'active' : ''}`} onClick={() => setTab('images')}>
+                    <span>🖼️</span><span>Imágenes</span>
+                  </button>
                 </>
               )}
             </div>
@@ -221,6 +234,7 @@ export default function SuperUserView() {
               {tab === 'obs'      && <ObservationsTab  api={api} selectedPat={selectedPat} />}
               {tab === 'infer'    && <InferenceTab     api={api} selectedPat={selectedPat} onGoReports={() => setTab('reports')} />}
               {tab === 'reports'  && <ReportsTab       api={api} selectedPat={selectedPat} />}
+              {tab === 'images'   && <ImagesTab        api={api} selectedPat={selectedPat} />}
             </div>
           </>
         )}
@@ -517,13 +531,31 @@ function AgentTab({ api, selectedPat }) {
   )
 }
 
+const LOINC_MAP = [
+  { code: '2339-0',  label: 'Glucosa',           unit: 'mg/dL',  placeholder: '126' },
+  { code: '55284-4', label: 'Presión arterial',   unit: 'mmHg',   placeholder: '120' },
+  { code: '39156-5', label: 'BMI',                unit: 'kg/m²',  placeholder: '28.5' },
+  { code: '14749-6', label: 'Insulina',           unit: 'µU/mL',  placeholder: '80' },
+  { code: '21612-7', label: 'Edad',               unit: 'años',   placeholder: '45' },
+  { code: '11996-6', label: 'Embarazos',          unit: '#',      placeholder: '2' },
+  { code: '39106-0', label: 'Grosor de piel',     unit: 'mm',     placeholder: '20' },
+  { code: '33914-3', label: 'Pedigree diabetes',  unit: 'score',  placeholder: '0.5' },
+]
+
 /* ── Crear Paciente ──────────────────────────────────────────────────────── */
 function CreatePatientTab({ api }) {
-  const [form,    setForm]    = useState({ family: '', given: '', birthDate: '', gender: 'unknown', identifier: '', docType: 'CC' })
-  const [result,  setResult]  = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [step,       setStep]       = useState(1)   // 1=demografía, 2=observaciones
+  const [form,       setForm]       = useState({ family: '', given: '', birthDate: '', gender: 'unknown', identifier: '', docType: 'CC' })
+  const [createdPat, setCreatedPat] = useState(null)
+  const [loading,    setLoading]    = useState(false)
+  const [obsValues,  setObsValues]  = useState({})  // code → value string
+  const [savingObs,  setSavingObs]  = useState(false)
 
   const create = async () => {
+    if (!form.family.trim() || !form.given.trim() || !form.birthDate) {
+      toast.error('Apellidos, nombres y fecha de nacimiento son obligatorios')
+      return
+    }
     setLoading(true)
     const fhirPatient = {
       resourceType: 'Patient',
@@ -540,16 +572,75 @@ function CreatePatientTab({ api }) {
     }
     try {
       const data = await api.createPatient(fhirPatient)
-      setResult(data)
+      setCreatedPat(data)
       toast.success('Paciente creado en FHIR R4')
+      setStep(2)
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al crear paciente')
     } finally { setLoading(false) }
   }
 
+  const saveObs = async () => {
+    const entries = LOINC_MAP.filter(l => obsValues[l.code]?.trim())
+    if (entries.length === 0) { setStep(1); setCreatedPat(null); setForm({ family:'', given:'', birthDate:'', gender:'unknown', identifier:'', docType:'CC' }); return }
+    setSavingObs(true)
+    let saved = 0
+    for (const l of entries) {
+      const val = parseFloat(obsValues[l.code])
+      if (isNaN(val)) continue
+      const fhirObs = {
+        resourceType: 'Observation',
+        status: 'final',
+        code: { coding: [{ system: 'http://loinc.org', code: l.code }] },
+        subject: { reference: `Patient/${createdPat.id}` },
+        valueQuantity: { value: val, unit: l.unit },
+      }
+      try {
+        await api.createObservation(createdPat.id, fhirObs)
+        saved++
+      } catch { /* continúa con las demás */ }
+    }
+    setSavingObs(false)
+    toast.success(`${saved} observación(es) registrada(s)`)
+    setStep(1)
+    setCreatedPat(null)
+    setObsValues({})
+    setForm({ family:'', given:'', birthDate:'', gender:'unknown', identifier:'', docType:'CC' })
+  }
+
+  if (step === 2 && createdPat) {
+    return (
+      <div>
+        <h3 style={{marginBottom:'0.25rem',color:'var(--text-1)'}}>Crear Paciente · Paso 2 de 2</h3>
+        <p style={{fontSize:'0.8rem',color:'var(--text-3)',marginBottom:'1rem'}}>
+          Paciente creado: <strong style={{color:'var(--cyan)'}}>{createdPat.name?.[0]?.text || createdPat.id}</strong>
+          {' '}— Agrega observaciones clínicas iniciales (opcional).
+        </p>
+        <div className="su-form-grid">
+          {LOINC_MAP.map(l => (
+            <div className="form-group" key={l.code}>
+              <label className="label">{l.label} <span style={{color:'var(--text-4)',fontWeight:400}}>({l.unit})</span></label>
+              <input className="input" type="number" placeholder={l.placeholder}
+                value={obsValues[l.code] || ''}
+                onChange={e => setObsValues(v => ({...v, [l.code]: e.target.value}))} />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2" style={{marginTop:'1rem'}}>
+          <button className="btn btn-primary" onClick={saveObs} disabled={savingObs}>
+            {savingObs ? <><div className="spinner"/> Guardando…</> : 'Guardar observaciones'}
+          </button>
+          <button className="btn btn-ghost" onClick={() => { setStep(1); setCreatedPat(null); setObsValues({}); setForm({ family:'', given:'', birthDate:'', gender:'unknown', identifier:'', docType:'CC' }) }}>
+            Omitir y terminar
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
-      <h3 style={{marginBottom:'0.5rem',color:'var(--text-1)'}}>Crear Paciente (FHIR R4)</h3>
+      <h3 style={{marginBottom:'0.25rem',color:'var(--text-1)'}}>Crear Paciente · Paso 1 de 2</h3>
       <p style={{fontSize:'0.8rem',color:'var(--text-3)',marginBottom:'1.5rem'}}>
         Registra un nuevo paciente en el sistema destino via estándar FHIR R4.
       </p>
@@ -593,17 +684,10 @@ function CreatePatientTab({ api }) {
           </select>
         </div>
       </div>
-      <button className="btn btn-primary" style={{marginTop:'1rem'}} onClick={create} disabled={loading}>
-        {loading ? <><div className="spinner"/> Creando…</> : 'Crear paciente'}
+      <button className="btn btn-primary" style={{marginTop:'1rem'}} onClick={create}
+        disabled={loading || !form.family.trim() || !form.given.trim() || !form.birthDate}>
+        {loading ? <><div className="spinner"/> Creando…</> : 'Siguiente →'}
       </button>
-      {result && (
-        <div className="su-result" style={{marginTop:'1rem'}}>
-          <div className="result-label">
-            Paciente creado · ID: <code>{result.id}</code>
-            {result.identifier?.[0]?.value && <> · CC: <code>{result.identifier[0].value}</code></>}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -836,6 +920,145 @@ function InferenceTab({ api, selectedPat, onGoReports }) {
   )
 }
 
+/* ── Imágenes ────────────────────────────────────────────────────────────── */
+const MODALITIES = ['FUNDUS', 'XRAY', 'OCT', 'DERMOSCOPY', 'ULTRASOUND', 'OTHER']
+
+function ImagesTab({ api, selectedPat }) {
+  const [images,    setImages]    = useState(null)
+  const [loading,   setLoading]   = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [modality,  setModality]  = useState('FUNDUS')
+  const [preview,   setPreview]   = useState(null)
+  const [failedIds, setFailedIds] = useState(new Set())
+  const fileRef = useRef(null)
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (selectedPat) load() }, [selectedPat?.id])
+
+  const load = async () => {
+    if (!selectedPat) return
+    setLoading(true)
+    try {
+      const data = await api.listImages(selectedPat.id)
+      setImages(data.entry || [])
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al cargar imágenes')
+    } finally { setLoading(false) }
+  }
+
+  const upload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !selectedPat) return
+    setUploading(true)
+    try {
+      await api.uploadImage(selectedPat.id, file, modality)
+      toast.success('Imagen subida correctamente')
+      load()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al subir imagen')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  return (
+    <div>
+      <h3 style={{marginBottom:'0.5rem',color:'var(--text-1)'}}>Imágenes Diagnósticas</h3>
+
+      {!selectedPat ? (
+        <div className="alert alert-warning" style={{fontSize:'0.78rem'}}>
+          Selecciona un paciente para ver o subir imágenes.
+        </div>
+      ) : (
+        <>
+          <div className="su-context-banner" style={{marginBottom:'1rem'}}>
+            Paciente: <strong>{selectedPat.name?.[0]?.text}</strong>
+          </div>
+
+          {/* Upload area */}
+          <div style={{
+            background:'rgba(255,255,255,0.03)', border:'1px solid var(--border)',
+            borderRadius:8, padding:'1rem', marginBottom:'1.25rem',
+          }}>
+            <div style={{fontSize:'0.78rem',fontWeight:600,marginBottom:'0.75rem',color:'var(--text-2)'}}>
+              Subir nueva imagen
+            </div>
+            <div className="flex gap-2" style={{alignItems:'center',flexWrap:'wrap'}}>
+              <select className="input" style={{width:'auto',fontSize:'0.8rem'}}
+                value={modality} onChange={e => setModality(e.target.value)}>
+                {MODALITIES.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <input ref={fileRef} type="file" accept="image/*,.dcm"
+                style={{display:'none'}} onChange={upload} />
+              <button className="btn btn-primary btn-sm" onClick={() => fileRef.current?.click()}
+                disabled={uploading || !selectedPat}>
+                {uploading ? <><div className="spinner"/> Subiendo…</> : '+ Seleccionar archivo'}
+              </button>
+            </div>
+          </div>
+
+          {/* Image gallery */}
+          <button className="btn btn-ghost btn-sm" style={{marginBottom:'1rem'}} onClick={load} disabled={loading}>
+            {loading ? <><div className="spinner"/>Cargando…</> : '↻ Actualizar'}
+          </button>
+
+          {images && (
+            images.length === 0 ? (
+              <div style={{color:'var(--text-3)',fontSize:'0.85rem'}}>No hay imágenes registradas.</div>
+            ) : (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'0.75rem'}}>
+                {images.map(img => (
+                  <div key={img.id} style={{
+                    borderRadius:8, overflow:'hidden',
+                    border:'1px solid var(--border)',
+                    background:'rgba(0,0,0,0.2)', cursor:'pointer',
+                  }} onClick={() => setPreview(img)}>
+                    {img.url && !failedIds.has(img.id) ? (
+                      <img src={img.url} alt={img.modality}
+                        style={{width:'100%',height:120,objectFit:'cover',display:'block'}}
+                        onError={() => setFailedIds(s => new Set([...s, img.id]))} />
+                    ) : (
+                      <div style={{height:120,display:'flex',alignItems:'center',justifyContent:'center',
+                        fontSize:'2rem',color:'var(--text-4)'}}>🖼️</div>
+                    )}
+                    <div style={{padding:'6px 8px'}}>
+                      <div style={{fontSize:'0.68rem',fontWeight:600,color:'var(--cyan)'}}>{img.modality}</div>
+                      <div style={{fontSize:'0.63rem',color:'var(--text-3)'}}>{img.created_at?.slice(0,10)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* Lightbox */}
+          {preview && (
+            <div style={{
+              position:'fixed', inset:0, zIndex:9999,
+              background:'rgba(0,0,0,0.85)', display:'flex',
+              alignItems:'center', justifyContent:'center',
+            }} onClick={() => setPreview(null)}>
+              <div style={{maxWidth:'90vw',maxHeight:'90vh',position:'relative'}} onClick={e => e.stopPropagation()}>
+                <button style={{
+                  position:'absolute',top:-12,right:-12,zIndex:1,
+                  background:'#334155',border:'none',borderRadius:'50%',
+                  width:28,height:28,cursor:'pointer',color:'#fff',fontSize:16,
+                }} onClick={() => setPreview(null)}>✕</button>
+                <img src={preview.url} alt={preview.modality}
+                  style={{maxWidth:'85vw',maxHeight:'82vh',objectFit:'contain',borderRadius:8,display:'block'}} />
+                <div style={{textAlign:'center',marginTop:8,fontSize:'0.75rem',color:'var(--text-3)'}}>
+                  {preview.modality} · {preview.created_at?.slice(0,10)}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 /* ── Reportes ────────────────────────────────────────────────────────────── */
 function ReportsTab({ api, selectedPat }) {
   const [reports,    setReports]    = useState(null)
@@ -865,10 +1088,12 @@ function ReportsTab({ api, selectedPat }) {
       await api.signReport(rid, { action: form.action, notes: form.notes || null, rejection_reason: form.rejection_reason || null })
       toast.success(`Reporte ${form.action === 'ACCEPTED' ? 'aceptado' : 'rechazado'}`)
       setSignForm(f => ({ ...f, [rid]: {} }))
-      load()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al firmar')
-    } finally { setSigning(null) }
+    } finally {
+      setSigning(null)
+      load()
+    }
   }
 
   const setField = (rid, key, val) =>

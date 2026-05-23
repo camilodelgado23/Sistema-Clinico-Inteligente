@@ -21,6 +21,7 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     role: str
     user_id: str
+    username: str
     patient_id: Optional[str] = None
     needs_habeas_data: bool
 
@@ -65,9 +66,16 @@ async def login(
         access_token=token,
         role=user["role"],
         user_id=str(user["id"]),
-        patient_id=patient_id,   # 👈 NUEVO
+        username=user["username"],
+        patient_id=patient_id,
         needs_habeas_data=needs_habeas,
     )
+
+@router.get("/me")
+async def me(user: dict = Depends(require_authenticated)):
+    """Devuelve username y rol del usuario autenticado."""
+    return {"user_id": str(user["id"]), "username": user["username"], "role": user["role"]}
+
 
 @router.post("/logout", status_code=204)
 async def logout(

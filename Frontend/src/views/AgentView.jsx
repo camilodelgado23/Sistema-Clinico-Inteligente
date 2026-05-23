@@ -1,7 +1,181 @@
 import { useState, useRef, useEffect } from 'react'
-import { ragAPI } from '../services/api'
+import { ragAPI, authAPI } from '../services/api'
 import { useAuthStore } from '../store/auth'
 import './AgentView.css'
+
+function stripMarkdown(text) {
+  return text
+    // Entidades HTML frecuentes en respuestas del agente
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x27;/g, "'")
+    // Markdown
+    .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/^[-*]\s+/gm, '- ')   // usar guion en vez de bullet (mejor soporte en jsPDF)
+    .replace(/^\d+\.\s+/gm, (m) => m)
+    // Normalizar espacios múltiples
+    .replace(/ {2,}/g, ' ')
+    .trim()
+}
+
+async function exportToPDF({ question, answer, sources, patientId, username }) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+
+  const marginL  = 20
+  const marginR  = 20
+  const pageW    = 210
+  const pageH    = 297
+  const footerH  = 14
+  const footerY  = pageH - footerH
+  // Ancho efectivo reducido para dar holgura a caracteres especiales (Í, é, ó, ú, •)
+  const usableW  = pageW - marginL - marginR - 6
+  const lineH    = 5.8
+
+  const now     = new Date()
+  const dateStr = now.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })
+  const timeStr = now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+
+  // Helper: renderiza bloque de texto con salto de página automático
+  const writeLines = (lines, indent = 0) => {
+    lines.forEach(line => {
+      if (y + lineH > footerY) {
+        addFooter()
+        doc.addPage()
+        y = 22
+        doc.setFontSize(8.5)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(51, 65, 85)
+      }
+      doc.text(line, marginL + indent, y)
+      y += lineH
+    })
+  }
+
+  // Helper: pie de página en la página actual
+  const addFooter = () => {
+    const p = doc.getNumberOfPages()
+    doc.setPage(p)
+    doc.setFillColor(241, 245, 249)
+    doc.rect(0, pageH - footerH, pageW, footerH, 'F')
+    doc.setFontSize(7)
+    doc.setTextColor(100, 116, 139)
+    doc.setFont('helvetica', 'italic')
+    doc.text(
+      'Documento de apoyo clinico - No reemplaza el criterio medico. Res. 1995/1999 | Ley 1581/2012',
+      pageW / 2, pageH - 5.5, { align: 'center' }
+    )
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Pag. ${p}`, pageW - marginR, pageH - 5.5, { align: 'right' })
+  }
+
+  // ── Cabecera ──────────────────────────────────────────────────────────────
+  doc.setFillColor(30, 41, 59)
+  doc.rect(0, 0, pageW, 28, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(14)
+  doc.setFont('helvetica', 'bold')
+  doc.text('SISTEMA CLINICO INTELIGENTE', marginL, 12)
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  doc.text('Informe de Consulta - Agente Clinico', marginL, 19)
+  doc.text(`${dateStr}  ${timeStr}`, pageW - marginR, 19, { align: 'right' })
+
+  let y = 38
+
+  // ── Metadatos ─────────────────────────────────────────────────────────────
+  doc.setTextColor(30, 41, 59)
+  doc.setFontSize(8.5)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Medico:', marginL, y)
+  doc.setFont('helvetica', 'normal')
+  doc.text(username || 'Sin identificar', marginL + 20, y)
+
+  if (patientId) {
+    y += 6
+    doc.setFont('helvetica', 'bold')
+    doc.text('Paciente ID:', marginL, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text(patientId, marginL + 28, y)
+  }
+
+  // Línea separadora
+  y += 8
+  doc.setDrawColor(148, 163, 184)
+  doc.setLineWidth(0.3)
+  doc.line(marginL, y, pageW - marginR, y)
+  y += 8
+
+  // ── Pregunta ──────────────────────────────────────────────────────────────
+  doc.setFillColor(241, 245, 249)
+  doc.setFontSize(8.5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(71, 85, 105)
+  const questionLines = doc.splitTextToSize(`Consulta: ${question}`, usableW - 2)
+  const questionH = questionLines.length * lineH + 5
+  doc.roundedRect(marginL, y, usableW + 6, questionH, 2, 2, 'F')
+  questionLines.forEach((line, i) => {
+    doc.text(line, marginL + 3, y + lineH + i * lineH)
+  })
+  y += questionH + 7
+
+  // ── Respuesta ─────────────────────────────────────────────────────────────
+  doc.setTextColor(30, 41, 59)
+  doc.setFontSize(8.5)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Respuesta del Agente Clinico', marginL, y)
+  y += 7
+
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(51, 65, 85)
+  const plain    = stripMarkdown(answer)
+  const ansLines = doc.splitTextToSize(plain, usableW)
+  writeLines(ansLines)
+
+  // ── Fuentes RAG ───────────────────────────────────────────────────────────
+  if (sources?.length > 0) {
+    y += 4
+    if (y + 10 > footerY) { addFooter(); doc.addPage(); y = 22 }
+    doc.setDrawColor(148, 163, 184)
+    doc.line(marginL, y, pageW - marginR, y)
+    y += 6
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Fuentes de conocimiento clinico (RAG):', marginL, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    sources.forEach(s => {
+      const sLines = doc.splitTextToSize(`- ${s}`, usableW)
+      writeLines(sLines, 2)
+    })
+  }
+
+  // ── Pie de página en todas las páginas ────────────────────────────────────
+  const totalPages = doc.getNumberOfPages()
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p)
+    doc.setFillColor(241, 245, 249)
+    doc.rect(0, pageH - footerH, pageW, footerH, 'F')
+    doc.setFontSize(7)
+    doc.setTextColor(100, 116, 139)
+    doc.setFont('helvetica', 'italic')
+    doc.text(
+      'Documento de apoyo clinico - No reemplaza el criterio medico. Res. 1995/1999 | Ley 1581/2012',
+      pageW / 2, pageH - 5.5, { align: 'center' }
+    )
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Pag. ${p} / ${totalPages}`, pageW - marginR, pageH - 5.5, { align: 'right' })
+  }
+
+  const filename = `consulta_clinica_${now.toISOString().slice(0, 10)}_${now.getHours()}h${now.getMinutes()}m.pdf`
+  doc.save(filename)
+}
 
 function renderMarkdown(text) {
   if (!text) return ''
@@ -42,8 +216,15 @@ const RAG_MODES = [
   { value: 'agentic', label: 'Agentic RAG',  desc: 'ReAct + tool calling' },
 ]
 
-function Message({ msg }) {
+function Message({ msg, onExport }) {
   const isUser = msg.role === 'user'
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = async () => {
+    setExporting(true)
+    try { await onExport(msg) } finally { setExporting(false) }
+  }
+
   return (
     <div className={`msg ${isUser ? 'msg--user' : 'msg--agent'}`}>
       <div className="msg-avatar">
@@ -63,18 +244,47 @@ function Message({ msg }) {
             ))}
           </div>
         )}
-        {msg.rag_mode && (
-          <div className="msg-meta" style={{display:'flex',gap:'0.4rem',alignItems:'center'}}>
-            <span className="badge badge-purple" style={{fontSize:'0.6rem'}}>
-              {RAG_MODES.find(m => m.value === msg.rag_mode)?.label || msg.rag_mode}
-            </span>
-            {msg.elapsed != null && (
-              <span style={{fontSize:'0.6rem',color:'var(--text-4)'}}>
-                {(msg.elapsed / 1000).toFixed(1)}s
+        <div className="msg-meta" style={{display:'flex',gap:'0.4rem',alignItems:'center',flexWrap:'wrap'}}>
+          {msg.rag_mode && (
+            <>
+              <span className="badge badge-purple" style={{fontSize:'0.6rem'}}>
+                {RAG_MODES.find(m => m.value === msg.rag_mode)?.label || msg.rag_mode}
               </span>
-            )}
-          </div>
-        )}
+              {msg.elapsed != null && (
+                <span style={{fontSize:'0.6rem',color:'var(--text-4)'}}>
+                  {(msg.elapsed / 1000).toFixed(1)}s
+                </span>
+              )}
+            </>
+          )}
+          {!isUser && onExport && (
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              title="Exportar como PDF"
+              style={{
+                marginLeft:'auto',display:'flex',alignItems:'center',gap:'0.3rem',
+                background:'none',border:'1px solid rgba(255,255,255,0.12)',
+                borderRadius:'4px',cursor:'pointer',padding:'0.2rem 0.5rem',
+                color:'var(--text-3)',fontSize:'0.62rem',
+                transition:'border-color 0.15s,color 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor='var(--cyan)'; e.currentTarget.style.color='var(--cyan)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor='rgba(255,255,255,0.12)'; e.currentTarget.style.color='var(--text-3)' }}
+            >
+              {exporting ? (
+                <div className="spinner" style={{width:9,height:9}} />
+              ) : (
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+              )}
+              {exporting ? 'Generando…' : 'Exportar PDF'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -95,7 +305,7 @@ const RAGAS_LABELS = {
   context_recall:    { label: 'Context Recall',    color: '#fb923c', min: 0.65 },
 }
 
-function RagasPanel({ report, onRun, running }) {
+function RagasPanel({ report }) {
   const { summary, total_questions } = report || {}
   return (
     <div className="agent-sidebar-section">
@@ -145,31 +355,16 @@ function RagasPanel({ report, onRun, running }) {
           )}
         </>
       ) : (
-        <p style={{ fontSize: '0.7rem', color: 'var(--text-4)', marginBottom: '0.5rem' }}>
-          Sin reporte disponible. Ejecute la evaluación.
+        <p style={{ fontSize: '0.7rem', color: 'var(--text-4)' }}>
+          Sin reporte disponible aún.
         </p>
       )}
-
-      <button
-        className="btn btn-ghost btn-sm"
-        style={{ width: '100%', marginTop: '0.4rem', fontSize: '0.68rem' }}
-        onClick={onRun}
-        disabled={running}
-      >
-        {running ? (
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', justifyContent: 'center' }}>
-            <div className="spinner" style={{ width: 10, height: 10 }} /> Evaluando…
-          </span>
-        ) : (
-          summary ? 'Re-evaluar RAGAS' : 'Ejecutar evaluación RAGAS'
-        )}
-      </button>
     </div>
   )
 }
 
 export default function AgentView() {
-  const { role } = useAuthStore()
+  const { role, username, setAuth, token, userId } = useAuthStore()
   const isAdmin = role?.toUpperCase() === 'ADMIN'
 
   const [messages, setMessages]     = useState([])
@@ -178,15 +373,13 @@ export default function AgentView() {
   const [sessionId, setSessionId]   = useState(null)
   const [patientId, setPatientId]   = useState('')
   const [ragMode, setRagMode]       = useState('agentic')
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const [indexStatus, setIndexStatus] = useState(null)
   const [ragasReport, setRagasReport] = useState(null)
-  const [ragasRunning, setRagasRunning] = useState(false)
+  const [configOpen, setConfigOpen] = useState(false)
   const [elapsed, setElapsed]       = useState(0)
   const bottomRef  = useRef(null)
   const inputRef   = useRef(null)
   const timerRef   = useRef(null)
-  const ragasPoll  = useRef(null)
 
   useEffect(() => {
     if (loading) {
@@ -207,27 +400,14 @@ export default function AgentView() {
     ragAPI.ragasReport().then(d => setRagasReport(d)).catch(() => null)
   }, [])
 
-  const runRagas = async () => {
-    try {
-      await ragAPI.ragasRun()
-      setRagasRunning(true)
-      ragasPoll.current = setInterval(async () => {
-        try {
-          const st = await ragAPI.ragasStatus()
-          if (!st.running) {
-            clearInterval(ragasPoll.current)
-            setRagasRunning(false)
-            const rep = await ragAPI.ragasReport()
-            setRagasReport(rep)
-          }
-        } catch {}
-      }, 8000)
-    } catch (e) {
-      if (e.response?.status === 409) alert('Ya hay una evaluación en curso.')
+  // Obtiene el username desde el backend si la sesión fue iniciada antes del cambio
+  useEffect(() => {
+    if (!username) {
+      authAPI.me().then(data => {
+        setAuth({ access_token: token, role: data.role, user_id: data.user_id, username: data.username, needs_habeas_data: false })
+      }).catch(() => null)
     }
-  }
-
-  useEffect(() => () => clearInterval(ragasPoll.current), [])
+  }, [])
 
   const sendMessage = async (text) => {
     const content = (text || input).trim()
@@ -271,10 +451,14 @@ export default function AgentView() {
     <div className="agent-layout fade-in">
       {/* Sidebar */}
       <aside className="agent-sidebar">
+
+        {/* MÉDICO: título + descripción + ID paciente */}
         {!isAdmin && (
           <div className="agent-sidebar-section">
-            <h3 style={{color:'var(--text-1)',marginBottom:'0.75rem'}}>Agente RAG Clínico</h3>
-
+            <h3 style={{color:'var(--text-1)',marginBottom:'0.4rem'}}>Agente Clínico</h3>
+            <p style={{fontSize:'0.72rem',color:'var(--text-3)',marginBottom:'0.875rem',lineHeight:'1.5'}}>
+              Asistente inteligente especializado en diabetes y retinopatía diabética. Consulta guías clínicas, interpreta resultados de modelos ML/DL y analiza datos de sus pacientes asignados.
+            </p>
             <label className="label">ID del paciente (opcional)</label>
             <input
               className="input"
@@ -282,75 +466,82 @@ export default function AgentView() {
               value={patientId}
               onChange={e => setPatientId(e.target.value)}
             />
-            <p style={{fontSize:'0.7rem',color:'var(--text-4)',marginTop:'0.375rem'}}>
-              Habilita acceso a datos clínicos y reportes del paciente
-            </p>
+          </div>
+        )}
 
-            {/* Collapsible: configuración avanzada */}
+        {/* ADMIN: configuración colapsable */}
+        {isAdmin && (
+          <div className="agent-sidebar-section">
             <button
-              onClick={() => setShowAdvanced(v => !v)}
+              onClick={() => setConfigOpen(v => !v)}
               style={{
-                marginTop:'0.875rem',display:'flex',alignItems:'center',gap:'0.4rem',
-                background:'none',border:'none',cursor:'pointer',padding:'0.25rem 0',
-                color:'var(--text-4)',fontSize:'0.68rem',width:'100%',
+                display:'flex',alignItems:'center',justifyContent:'space-between',
+                width:'100%',background:'none',border:'none',cursor:'pointer',
+                padding:0,color:'var(--text-2)',
               }}
             >
+              <span style={{fontSize:'0.8rem',fontWeight:600}}>Configuración del agente</span>
               <svg
-                width="10" height="10" viewBox="0 0 24 24" fill="none"
+                width="12" height="12" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" strokeWidth="2"
-                style={{transform: showAdvanced ? 'rotate(90deg)' : 'none', transition:'transform 0.2s'}}
+                style={{transform: configOpen ? 'rotate(180deg)' : 'none', transition:'transform 0.2s'}}
               >
-                <polyline points="9 18 15 12 9 6"/>
+                <polyline points="6 9 12 15 18 9"/>
               </svg>
-              Configuración avanzada
             </button>
 
-            {showAdvanced && (
-              <div style={{marginTop:'0.5rem'}}>
-                <label className="label">Modo RAG</label>
-                <div className="rag-modes">
-                  {RAG_MODES.map(m => (
-                    <button
-                      key={m.value}
-                      className={`rag-mode-btn ${ragMode === m.value ? 'active' : ''}`}
-                      onClick={() => setRagMode(m.value)}
-                    >
-                      <span className="rag-mode-name">{m.label}</span>
-                      <span className="rag-mode-desc">{m.desc}</span>
-                    </button>
-                  ))}
+            {configOpen && (
+              <>
+                <div style={{marginTop:'0.75rem'}}>
+                  <label className="label">Modo RAG</label>
+                  <div className="rag-modes">
+                    {RAG_MODES.map(m => (
+                      <button
+                        key={m.value}
+                        className={`rag-mode-btn ${ragMode === m.value ? 'active' : ''}`}
+                        onClick={() => setRagMode(m.value)}
+                      >
+                        <span className="rag-mode-name">{m.label}</span>
+                        <span className="rag-mode-desc">{m.desc}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+
+                <div style={{marginTop:'0.875rem'}}>
+                  <h4 style={{color:'var(--text-2)',marginBottom:'0.5rem',fontSize:'0.78rem',fontWeight:600}}>
+                    Estado del índice
+                  </h4>
+                  {indexStatus ? (
+                    <div className="index-status">
+                      <div className="index-stat">
+                        <span className="dot dot-low" />
+                        <span>{indexStatus.chunks} chunks indexados</span>
+                      </div>
+                      <div className="index-stat">
+                        <span className={`dot ${indexStatus.has_faiss ? 'dot-low' : 'dot-high'}`} />
+                        <span>FAISS {indexStatus.has_faiss ? 'activo' : 'no disponible'}</span>
+                      </div>
+                      <div className="index-stat">
+                        <span className={`dot ${indexStatus.has_bm25 ? 'dot-low' : 'dot-high'}`} />
+                        <span>BM25 {indexStatus.has_bm25 ? 'activo' : 'no disponible'}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{color:'var(--text-4)',fontSize:'0.75rem'}}>Verificando…</div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}
 
-        {!isAdmin && (
-          <div className="agent-sidebar-section">
-            <h4 style={{color:'var(--text-2)',marginBottom:'0.625rem'}}>Estado del índice</h4>
-            {indexStatus ? (
-              <div className="index-status">
-                <div className="index-stat">
-                  <span className="dot dot-low" />
-                  <span>{indexStatus.chunks} chunks indexados</span>
-                </div>
-                <div className="index-stat">
-                  <span className={`dot ${indexStatus.has_faiss ? 'dot-low' : 'dot-high'}`} />
-                  <span>FAISS {indexStatus.has_faiss ? 'activo' : 'no disponible'}</span>
-                </div>
-                <div className="index-stat">
-                  <span className={`dot ${indexStatus.has_bm25 ? 'dot-low' : 'dot-high'}`} />
-                  <span>BM25 {indexStatus.has_bm25 ? 'activo' : 'no disponible'}</span>
-                </div>
-              </div>
-            ) : (
-              <div style={{color:'var(--text-4)',fontSize:'0.75rem'}}>Verificando…</div>
-            )}
-          </div>
+        {/* ADMIN: dashboard RAGAS (solo lectura) */}
+        {isAdmin && (
+          <RagasPanel report={ragasReport} />
         )}
 
-        <RagasPanel report={ragasReport} onRun={runRagas} running={ragasRunning} />
-
+        {/* MÉDICO: sesión activa */}
         {!isAdmin && sessionId && (
           <div className="agent-sidebar-section">
             <div style={{display:'flex',gap:'0.5rem',alignItems:'center',justifyContent:'space-between'}}>
@@ -363,6 +554,7 @@ export default function AgentView() {
           </div>
         )}
 
+        {/* MÉDICO: aviso de uso clínico */}
         {!isAdmin && (
           <div className="agent-sidebar-section">
             <div className="alert alert-warning" style={{fontSize:'0.72rem'}}>
@@ -378,7 +570,7 @@ export default function AgentView() {
         <div className="agent-chat">
           <div className="chat-header">
             <div>
-              <h2 style={{color:'var(--text-1)'}}>Agente RAG Clínico</h2>
+              <h2 style={{color:'var(--text-1)'}}>Agente Clínico</h2>
               <p style={{fontSize:'0.75rem',color:'var(--text-3)'}}>
                 Panel de administración — solo lectura
               </p>
@@ -402,13 +594,13 @@ export default function AgentView() {
         <div className="agent-chat">
           <div className="chat-header">
             <div>
-              <h2 style={{color:'var(--text-1)'}}>Agente RAG Clínico</h2>
+              <h2 style={{color:'var(--text-1)'}}>Agente Clínico</h2>
               <p style={{fontSize:'0.75rem',color:'var(--text-3)'}}>
                 Agentic RAG · Anti-injection activo · PII masking
               </p>
             </div>
             <div className="flex gap-2 items-center">
-              <span className="badge badge-purple">{RAG_MODES.find(m => m.value === ragMode)?.label}</span>
+              <span className="badge badge-purple">Agentic RAG</span>
               <span className="badge badge-info">Cloudflare WAF</span>
             </div>
           </div>
@@ -434,7 +626,19 @@ export default function AgentView() {
               </div>
             )}
 
-            {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+            {messages.map((msg, i) => (
+              <Message
+                key={i}
+                msg={msg}
+                onExport={msg.role === 'agent' ? (agentMsg) => exportToPDF({
+                  question: messages[i - 1]?.content || '',
+                  answer:   agentMsg.content,
+                  sources:  agentMsg.sources,
+                  patientId,
+                  username,
+                }) : null}
+              />
+            ))}
 
             {loading && (
               <div className="msg msg--agent">

@@ -10,7 +10,8 @@ import re
 import asyncpg
 import bcrypt
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+import io as _io
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from pydantic import BaseModel
@@ -36,6 +37,39 @@ LOINC_DISPLAY = {
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 1
+
+
+# ── MinIO helpers (mirror de fhir.py) ────────────────────────────────────────
+
+def _su_minio_client():
+    from minio import Minio
+    return Minio(
+        settings.MINIO_ENDPOINT,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=False,
+    )
+
+
+def _su_presigned_url(key: str) -> str:
+    import boto3
+    from botocore.config import Config
+    s3 = boto3.client(
+        "s3",
+        endpoint_url="http://minio:9000",
+        aws_access_key_id=settings.MINIO_ACCESS_KEY,
+        aws_secret_access_key=settings.MINIO_SECRET_KEY,
+        config=Config(signature_version="s3v4"),
+        region_name="us-east-1",
+    )
+    url = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.MINIO_BUCKET, "Key": key},
+        ExpiresIn=3600,
+    )
+    # Rewrite internal Docker URL to nginx /minio/ proxy path.
+    # nginx sets Host: minio:9000 so the AWS signature stays valid.
+    return url.replace("http://minio:9000", "/minio")
 
 
 # ── Security helper ──────────────────────────────────────────────────────────
@@ -587,8 +621,14 @@ async def list_risk_reports_su(
     rows = await db.fetch(
         """SELECT rr.id, rr.model_type, rr.is_critical, rr.doctor_action,
                   rr.doctor_notes, rr.rejection_reason, rr.signed_at, rr.created_at,
-                  pgp_sym_decrypt(rr.prediction_enc, $2)::json->>'score'    AS score,
-                  pgp_sym_decrypt(rr.prediction_enc, $2)::json->>'category' AS category,
+                  rr.risk_score AS raw_score,
+                  rr.risk_category AS raw_category,
+                  CASE WHEN rr.prediction_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(rr.prediction_enc, $2)::json->>'score'
+                       ELSE NULL END AS score,
+                  CASE WHEN rr.prediction_enc IS NOT NULL
+                       THEN pgp_sym_decrypt(rr.prediction_enc, $2)::json->>'category'
+                       ELSE rr.risk_category END AS category,
                   su.full_name AS signed_by_name
            FROM risk_reports rr
            LEFT JOIN practitioners su ON su.id = rr.signed_by_practitioner
@@ -598,11 +638,14 @@ async def list_risk_reports_su(
     )
     entries = []
     for r in rows:
+        score_str = r["score"]
+        if score_str is None and r["raw_score"] is not None:
+            score_str = str(r["raw_score"])
         entries.append({
             "id": str(r["id"]),
             "model_type": r["model_type"],
-            "risk_score": float(r["score"]) if r["score"] else None,
-            "risk_category": r["category"],
+            "risk_score": float(score_str) if score_str is not None else None,
+            "risk_category": r["category"] or r["raw_category"],
             "is_critical": r["is_critical"],
             "doctor_action": r["doctor_action"],
             "doctor_notes": r["doctor_notes"],
@@ -635,21 +678,22 @@ async def sign_risk_report_su(
     if row["doctor_action"] is not None:
         raise HTTPException(status_code=409, detail="El reporte ya fue firmado")
 
-    await db.execute(
-        """UPDATE risk_reports
-           SET doctor_action = $1, doctor_notes = $2, rejection_reason = $3,
-               signed_by_practitioner = $4::uuid, signed_at = NOW()
-           WHERE id = $5::uuid""",
-        body.action, body.notes, body.rejection_reason,
-        str(practitioner["id"]), rid,
-    )
-    await db.execute(
-        """INSERT INTO superuser_audit (practitioner_id, action, patient_id, detail)
-           SELECT $1::uuid, 'SIGN_REPORT', patient_id,
-                  jsonb_build_object('report_id', $2, 'action', $3)
-           FROM risk_reports WHERE id = $2::uuid""",
-        str(practitioner["id"]), rid, body.action,
-    )
+    patient_id_str = str(row["patient_id"])
+    async with db.transaction():
+        await db.execute(
+            """UPDATE risk_reports
+               SET doctor_action = $1, doctor_notes = $2, rejection_reason = $3,
+                   signed_by_practitioner = $4::uuid, signed_at = NOW()
+               WHERE id = $5::uuid""",
+            body.action, body.notes, body.rejection_reason,
+            str(practitioner["id"]), rid,
+        )
+        await db.execute(
+            """INSERT INTO superuser_audit (practitioner_id, action, patient_id, detail)
+               VALUES ($1::uuid, 'SIGN_REPORT', $2::uuid,
+                       jsonb_build_object('report_id', $3::text, 'action', $4::text))""",
+            str(practitioner["id"]), patient_id_str, rid, body.action,
+        )
     return {"signed": rid, "action": body.action}
 
 
@@ -697,12 +741,102 @@ async def soft_delete_patient(
     return {"status": "ok", "message": "Paciente desactivado (dato preservado)", "active": False}
 
 
+# ── Imágenes (SuperUser) ─────────────────────────────────────────────────────
+
+@router.post("/superuser/patients/{patient_id}/images", status_code=201)
+async def upload_image_su(
+    patient_id: str,
+    modality: str = Form("FUNDUS"),
+    file: UploadFile = File(...),
+    practitioner: dict = Depends(require_superuser),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """Sube una imagen diagnóstica para el paciente. Clave MinIO cifrada con AES-256."""
+    await _require_patient_assigned(db, str(practitioner["id"]), patient_id)
+    patient = await db.fetchrow(
+        "SELECT id FROM patients WHERE id = $1::uuid AND deleted_at IS NULL", patient_id,
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    import uuid as _uuid_mod
+    content = await file.read()
+    ext = (file.filename or "file").rsplit(".", 1)[-1].lower()
+    object_key = f"patients/{patient_id}/{_uuid_mod.uuid4()}.{ext}"
+
+    mc = _su_minio_client()
+    bucket = settings.MINIO_BUCKET
+    if not mc.bucket_exists(bucket):
+        mc.make_bucket(bucket)
+    mc.put_object(bucket, object_key, _io.BytesIO(content), length=len(content),
+                  content_type=file.content_type or "application/octet-stream")
+
+    enc_key = await db.fetchrow(
+        "SELECT pgp_sym_encrypt($1, $2) AS enc", object_key, settings.AES_KEY,
+    )
+    row = await db.fetchrow(
+        """INSERT INTO images (patient_id, minio_key, modality, uploaded_by)
+           VALUES ($1::uuid, $2, $3, NULL)
+           RETURNING id, created_at""",
+        patient_id, enc_key["enc"], modality,
+    )
+    await db.execute(
+        """INSERT INTO superuser_audit (practitioner_id, action, patient_id, detail)
+           VALUES ($1::uuid, 'UPLOAD_IMAGE', $2::uuid,
+                   jsonb_build_object('image_id', $3::text, 'modality', $4::text))""",
+        str(practitioner["id"]), patient_id, str(row["id"]), modality,
+    )
+    return {
+        "id": str(row["id"]),
+        "modality": modality,
+        "created_at": row["created_at"].isoformat(),
+        "url": _su_presigned_url(object_key),
+    }
+
+
+@router.get("/superuser/patients/{patient_id}/images")
+async def list_images_su(
+    patient_id: str,
+    practitioner: dict = Depends(require_superuser),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """Lista imágenes del paciente con URLs presignadas (1 h)."""
+    await _require_patient_assigned(db, str(practitioner["id"]), patient_id)
+    patient = await db.fetchrow(
+        "SELECT id FROM patients WHERE id = $1::uuid AND deleted_at IS NULL", patient_id,
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    rows = await db.fetch(
+        """SELECT id, modality, created_at,
+                  pgp_sym_decrypt(minio_key, $2) AS object_key
+           FROM images
+           WHERE patient_id = $1::uuid AND deleted_at IS NULL
+           ORDER BY created_at DESC LIMIT 50""",
+        patient_id, settings.AES_KEY,
+    )
+    entries = []
+    for r in rows:
+        try:
+            url = _su_presigned_url(r["object_key"])
+        except Exception:
+            url = None
+        entries.append({
+            "id": str(r["id"]),
+            "modality": r["modality"],
+            "created_at": r["created_at"].isoformat(),
+            "url": url,
+        })
+    return {"total": len(entries), "entry": entries}
+
+
 # ── Agent proxy ───────────────────────────────────────────────────────────────
 
 class AgentChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
-    mode: Optional[str] = "hybrid"
+    mode: Optional[str] = "agentic"
     patient_id: Optional[str] = None
 
 

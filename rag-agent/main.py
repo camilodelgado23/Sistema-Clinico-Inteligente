@@ -265,6 +265,8 @@ async def chat(
 
     if llm is None:
         answer = _fallback_response(body.message, rag_context, retrieved, fhir_context)
+    elif rag_mode == "agentic" and body.patient_id and fhir_context:
+        answer = await _patient_report_response(llm, body.message, history, rag_context, long_context, fhir_context)
     elif rag_mode == "agentic":
         answer = await _agentic_response(llm, body.message, history, body.patient_id, rag_context, long_context, fhir_context)
     else:
@@ -320,6 +322,77 @@ async def _standard_response(llm, message: str, history: list, rag_context: str,
                 f"Mientras tanto, aquí está el contexto clínico recuperado:\n\n{rag_context[:600] if rag_context else 'No hay contexto disponible.'}"
             )
         return f"Error del LLM: {e}. Contexto disponible: {rag_context[:300] if rag_context else 'Ninguno.'}"
+
+
+async def _patient_report_response(llm, message: str, history: list, rag_context: str,
+                                    long_context: str, fhir_context: str) -> str:
+    """Informe clínico estructurado determinístico a partir del fhir_context pre-cargado."""
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+    report_prompt = """Eres un asistente clínico especializado en diabetes y retinopatía diabética.
+
+TAREA: Analiza los datos clínicos del paciente y genera un informe médico completo.
+
+Los datos del paciente ya están en el contexto — úsalos directamente sin inventar valores.
+
+Estructura tu respuesta con EXACTAMENTE estos encabezados en este orden:
+
+**Identificación del Paciente**
+Nombre, fecha de nacimiento, tipo de documento e ID del sistema.
+
+**Observaciones Clínicas (LOINC)**
+Lista cada observación con su valor, unidades y fecha. Señala valores fuera de rango normal.
+
+**Reportes de Riesgo Clínico**
+Lista cada reporte ML/DL con score, categoría de riesgo, fecha y acción registrada por el médico.
+Si el score indica riesgo ALTO o CRÍTICO, destácalo claramente.
+
+**Diagnóstico**
+Interpretación clínica integrada de los hallazgos. Referencia valores de corte según guías (ADA, OPS).
+Considera tanto los valores de laboratorio como los scores de los modelos predictivos.
+
+**Recomendaciones**
+Recomendaciones específicas ordenadas por prioridad, basadas en los hallazgos y en las guías clínicas.
+
+**Nota**
+Observaciones adicionales, limitaciones del análisis o próximos pasos sugeridos.
+
+**Fuentes RAG**
+Documentos clínicos de referencia consultados.
+
+Normativa: Resolución 866/2021, Ley 1581/2012, Resolución 1995/1999.
+Responde siempre en español con lenguaje clínico preciso."""
+
+    messages = [SystemMessage(content=report_prompt)]
+    messages.append(SystemMessage(content=fhir_context))
+
+    if long_context:
+        messages.append(SystemMessage(content=f"Historial previo del paciente:\n{long_context}"))
+    if rag_context:
+        messages.append(SystemMessage(content=f"Guías y protocolos clínicos de referencia:\n{rag_context}"))
+
+    for turn in history[-6:]:
+        if turn["role"] == "user":
+            messages.append(HumanMessage(content=turn["content"]))
+        else:
+            messages.append(AIMessage(content=turn["content"]))
+
+    messages.append(HumanMessage(content=message))
+
+    try:
+        response = await llm.ainvoke(messages)
+        return response.content
+    except Exception as e:
+        err = str(e)
+        if "429" in err or "rate_limit" in err.lower() or "rate limit" in err.lower():
+            import re
+            retry_match = re.search(r"try again in (\d+m[\d.]+s|\d+[\d.]+s)", err)
+            retry_info = f" Intenta de nuevo en {retry_match.group(1)}." if retry_match else " Intenta de nuevo en unos minutos."
+            return (
+                f"El servicio de IA alcanzó el límite de uso temporalmente.{retry_info}\n\n"
+                f"Datos del paciente disponibles:\n{fhir_context}"
+            )
+        return await _standard_response(llm, message, history, rag_context, long_context, fhir_context)
 
 
 async def _agentic_response(llm, message: str, history: list, patient_id: Optional[str],
@@ -407,12 +480,15 @@ async def _fetch_patient_context(patient_id: str) -> str:
                 patient_id,
             )
             if obs_rows:
+                import re as _re
                 obs_lines = []
                 for o in obs_rows:
                     display = LOINC_DISPLAY.get(o["loinc_code"], o["loinc_code"])
                     val = float(o["value"]) if o["value"] is not None else "?"
                     date = str(o["created_at"])[:10]
-                    obs_lines.append(f"  - {display}: {val} {o['unit'] or ''} ({date})")
+                    # Eliminar unidades mal guardadas tipo {score}, {count}, etc.
+                    unit = _re.sub(r"\{[^}]*\}", "", o["unit"] or "").strip()
+                    obs_lines.append(f"  - {display}: {val} {unit} ({date})".rstrip())
                 parts.append("Observaciones clínicas (LOINC):\n" + "\n".join(obs_lines))
 
             # Reportes de riesgo ML/DL — descifrar prediction_enc (fuente autoritativa)

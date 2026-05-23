@@ -101,20 +101,22 @@ Sistema-Clinico-Inteligente/
 │   │   ├── migrations.py       # Migraciones SQL automáticas al arrancar
 │   │   └── audit.py            # Log de auditoría de acciones clínicas
 │   └── routers/
-│       ├── auth.py             # Login, registro, logout
+│       ├── auth.py             # Login/logout, /auth/me, username en LoginResponse
 │       ├── fhir.py             # FHIR R4: Patient, Media, RiskAssessment, Observation
-│       ├── admin.py            # Gestión de usuarios (solo ADMIN)
-│       └── superuser.py        # API interoperabilidad — médicos externos (PASO 06)
+│       ├── admin.py            # Gestión de usuarios, auditoría, ARCO (solo ADMIN)
+│       └── superuser.py        # Portal médico externo: JWT propio, practitioner_assignments,
+│                               # proxy /api/v1/superuser/agent/chat → rag-agent
 │
 ├── Frontend/                   # Interfaz clínica (React + Vite)
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── package.json
-│   ├── nginx-spa.conf          # Nginx SPA en producción
+│   ├── nginx-spa.conf          # Nginx SPA — Cache-Control no-store en index.html,
+│   │                           # immutable en assets con hash
 │   ├── Dockerfile
 │   └── src/
 │       ├── main.jsx            # Punto de entrada React
-│       ├── App.jsx             # Rutas principales
+│       ├── App.jsx             # Rutas principales por rol
 │       ├── index.css
 │       ├── components/
 │       │   ├── InferencePanel.jsx      # Panel IA (ML/DL/Multimodal) con polling
@@ -123,41 +125,63 @@ Sistema-Clinico-Inteligente/
 │       │   ├── ObservationsChart.jsx   # Gráfica observaciones clínicas (LOINC)
 │       │   ├── RiskReportForm.jsx      # Formulario firma médica del reporte de riesgo
 │       │   ├── CreatePatientModal.jsx  # Modal crear nuevo paciente
-│       │   ├── HabeasModal.jsx         # Modal consentimiento Habeas Data
+│       │   ├── HabeasModal.jsx         # Modal consentimiento Habeas Data (Ley 1581/2012)
 │       │   ├── Migrationpanel.jsx      # Panel migración FHIR
 │       │   ├── layout.jsx              # Layout con sidebar y navbar
 │       │   └── layout.css
 │       ├── hooks/
 │       │   └── useInferenceSocket.js   # Hook WebSocket inferencia en tiempo real
 │       ├── services/
-│       │   └── api.js                  # Cliente axios con interceptores de auth
+│       │   └── api.js                  # Cliente axios con interceptores de auth;
+│       │                               # authAPI, fhirAPI, inferAPI, adminAPI,
+│       │                               # assignmentAPI, arcoAPI, ragAPI, superuserAPI
 │       ├── store/
-│       │   └── auth.js                 # Estado global de autenticación (Zustand)
+│       │   └── auth.js                 # Estado global Zustand — token, role, userId,
+│       │                               # username (persiste en sessionStorage)
 │       └── views/
 │           ├── login.jsx / login.css           # Pantalla de login
 │           ├── dashboard.jsx / dashboard.css   # Dashboard — lista de pacientes
 │           ├── PatientDetail.jsx / PatientDetail.css  # Detalle paciente (tabs)
 │           ├── PatientView.jsx                 # Vista rol PACIENTE
 │           ├── AdminPanel.jsx / AdminPanel.css # Panel administración de usuarios
-│           ├── AgentView.jsx / AgentView.css   # Chat con agente RAG clínico
-│           ├── SuperUserView.jsx / SuperUserView.css  # Portal médico externo (PASO 06)
+│           ├── AgentView.jsx / AgentView.css   # Agente Clínico:
+│           │                                   #   MEDICO → chat + ID paciente + export PDF
+│           │                                   #   ADMIN  → RAGAS dashboard (solo lectura)
+│           │                                   #            + config colapsable (modo RAG,
+│           │                                   #              estado del índice)
+│           ├── SuperUserView.jsx / SuperUserView.css  # Portal médico externo:
+│           │                                          # búsqueda/creación de pacientes,
+│           │                                          # observaciones, inferencia ML/DL,
+│           │                                          # chat con agente clínico
 │           └── index.css
 │
-├── rag-agent/                  # Agente RAG clínico (FastAPI + FAISS + BM25 + Groq)
-│   ├── main.py                 # Endpoints: /agent/chat, /agent/ragas, /health
+├── rag-agent/                  # Agente RAG clínico (FastAPI + FAISS + BM25 + LLM)
+│   ├── main.py                 # Endpoints: /agent/chat, /agent/ragas/*, /health
+│   │                           # _fetch_patient_context: datos LOINC + risk_reports
+│   │                           #   descifrados (pgp_sym_decrypt)
+│   │                           # _patient_report_response: informe estructurado
+│   │                           #   determinístico (sin tool-calling) cuando hay paciente
+│   │                           # _agentic_response: ReAct + tools para consultas generales
+│   │                           # _is_trusted_proxy_request + X-Granted-Patient-Id:
+│   │                           #   autorización interna SuperUser → rag-agent
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── ragas_eval.py           # Evaluación RAGAS (faithfulness, relevance, context recall)
 │   ├── ragas_report.json       # Resultados de la última evaluación RAGAS
 │   ├── core/
-│   │   ├── injection.py        # Anti prompt-injection (14 patrones) + PII masking
+│   │   ├── injection.py        # Anti prompt-injection: 20+ patrones, MAX_MESSAGE_LENGTH=2000,
+│   │   │                       # detección JSON payloads, UUIDs múltiples, SQL injection,
+│   │   │                       # listado masivo de pacientes; PII masking
 │   │   ├── retriever.py        # Retriever híbrido FAISS + BM25
-│   │   ├── memory.py           # Memoria conversacional por sesión
-│   │   └── tools.py            # Herramientas del agente (fetch paciente, observaciones)
+│   │   ├── memory.py           # Memoria conversacional por sesión (Redis) y largo plazo (PG)
+│   │   └── tools.py            # Herramientas del agente:
+│   │                           #   query_fhir, query_risk_reports (descifra prediction_enc),
+│   │                           #   invoke_ml_model, invoke_dl_model,
+│   │                           #   create_fhir_report, search_clinical_docs
 │   ├── knowledge/              # Base de conocimiento clínico (20 documentos .txt)
 │   │   ├── 01_diabetes_diagnostico.txt
 │   │   ├── 02_retinopatia_diabetica.txt
-│   │   └── … (20 documentos sobre diabetes, FHIR, regulación colombiana, modelos ML/DL)
+│   │   └── … (guías ADA/OPS, FHIR R4, regulación colombiana, modelos ML/DL)
 │   └── tests/
 │       └── test_adversarial.py # 36 pruebas: injection attacks, falsos positivos, PII masking
 │
@@ -214,7 +238,10 @@ Browser (HTTPS) → Cloudflare → nginx:443
 backend → orchestrator:8003 → ml-service:8001
                              → dl-service:8002
 backend → PostgreSQL:5432
-rag-agent → PostgreSQL:5432 (FAISS + BM25 retrieval)
+rag-agent → PostgreSQL:5432 (pacientes, observaciones, risk_reports cifrados)
+rag-agent → Redis (memoria conversacional por sesión)
+
+SuperUser → backend /api/v1/superuser/* → rag-agent (proxy con X-Granted-Patient-Id)
 ```
 
 ## 🎬 Demo del sistema
