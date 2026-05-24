@@ -41,6 +41,8 @@ function makeSuAPI(baseUrl, token) {
     },
     listImages: (patientId) =>
       axios.get(`${base}/api/v1/superuser/patients/${patientId}/images`, { headers }).then(r => r.data),
+    updateObservation: (patientId, obsId, body) =>
+      axios.patch(`${base}/api/v1/superuser/patients/${patientId}/observations/${obsId}`, body, { headers }).then(r => r.data),
   }
 }
 
@@ -694,54 +696,84 @@ function CreatePatientTab({ api }) {
 
 /* ── Observaciones ───────────────────────────────────────────────────────── */
 function ObservationsTab({ api, selectedPat }) {
-  const [loincCode,  setLoincCode]  = useState('')
-  const [newObs,     setNewObs]     = useState({ loinc: '', value: '', unit: '' })
   const [result,     setResult]     = useState(null)
   const [loading,    setLoading]    = useState(false)
+  const [editMode,   setEditMode]   = useState(false)  // editar existentes
+  const [editValues, setEditValues] = useState({})     // loinc → { id, value, unit }
   const [saving,     setSaving]     = useState(false)
-  const [showCreate, setShowCreate] = useState(false)
 
-  // Carga automática al abrir el tab con un paciente seleccionado
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (selectedPat) fetch_() }, [selectedPat?.id])
 
   const fetch_ = async () => {
     if (!selectedPat) return
     setLoading(true)
+    setEditMode(false)
     try {
-      const data = await api.getObservations(selectedPat.id, loincCode)
+      const data = await api.getObservations(selectedPat.id)
       setResult(data)
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al obtener observaciones')
     } finally { setLoading(false) }
   }
 
-  const createObs = async () => {
-    if (!selectedPat || !newObs.loinc) return
+  // Abre el formulario de edición/registro precargando valores existentes
+  const openEditForm = () => {
+    const obs = result?.entry?.map(e => e.resource ?? e) || []
+    const vals = {}
+    LOINC_MAP.forEach(l => { vals[l.code] = { id: null, value: '', unit: l.unit } })
+    obs.forEach(o => {
+      const code = o?.code?.coding?.[0]?.code
+      // Solo tomar la primera aparición (obs viene DESC → la más reciente)
+      if (code && vals[code] !== undefined && !vals[code].id) {
+        vals[code] = {
+          id: o.id || null,
+          value: String(o.valueQuantity?.value ?? ''),
+          unit: o.valueQuantity?.unit ?? (LOINC_MAP.find(l => l.code === code)?.unit || ''),
+        }
+      }
+    })
+    setEditValues(vals)
+    setEditMode(true)
+  }
+
+  const saveEdit = async () => {
     setSaving(true)
-    const fhirObs = {
-      resourceType: 'Observation',
-      status: 'final',
-      code: { coding: [{ system: 'http://loinc.org', code: newObs.loinc }] },
-      subject: { reference: `Patient/${selectedPat.id}` },
-      valueQuantity: { value: parseFloat(newObs.value), unit: newObs.unit },
+    let ok = 0, fail = 0
+    for (const [code, entry] of Object.entries(editValues)) {
+      const valStr = String(entry.value ?? '').trim()
+      if (!valStr) continue
+      const val = parseFloat(valStr)
+      if (isNaN(val)) continue
+      const unit = entry.unit || (LOINC_MAP.find(l => l.code === code)?.unit || '')
+      try {
+        if (entry.id) {
+          await api.updateObservation(selectedPat.id, entry.id, { valueQuantity: { value: val, unit } })
+        } else {
+          await api.createObservation(selectedPat.id, {
+            resourceType: 'Observation', status: 'final',
+            code: { coding: [{ system: 'http://loinc.org', code }] },
+            subject: { reference: `Patient/${selectedPat.id}` },
+            valueQuantity: { value: val, unit },
+          })
+        }
+        ok++
+      } catch { fail++ }
     }
-    try {
-      await api.createObservation(selectedPat.id, fhirObs)
-      toast.success('Observación registrada')
-      setShowCreate(false)
-      setNewObs({ loinc: '', value: '', unit: '' })
-      fetch_()
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al registrar')
-    } finally { setSaving(false) }
+    setSaving(false)
+    if (ok > 0) toast.success(`${ok} observación(es) guardada(s)`)
+    if (fail > 0) toast.error(`${fail} observación(es) no se pudieron guardar`)
+    setEditMode(false)
+    fetch_()
   }
 
   const obs = result?.entry?.map(e => e.resource ?? e) || []
+  const hasObs = obs.length > 0
 
   return (
     <div>
       <h3 style={{marginBottom:'0.5rem',color:'var(--text-1)'}}>Observaciones Clínicas</h3>
+
       {selectedPat ? (
         <div className="su-context-banner">
           Paciente: <strong>{selectedPat.name?.[0]?.text}</strong>
@@ -749,50 +781,72 @@ function ObservationsTab({ api, selectedPat }) {
         </div>
       ) : (
         <div className="alert alert-warning" style={{fontSize:'0.78rem',marginBottom:'1rem'}}>
-          Selecciona un paciente en "Buscar Paciente" primero.
+          Selecciona un paciente primero.
         </div>
       )}
-      <div className="flex gap-2" style={{marginBottom:'1rem',flexWrap:'wrap'}}>
-        <input className="input" placeholder="Código LOINC opcional (ej: 2339-0)" style={{flex:1}}
-          value={loincCode} onChange={e => setLoincCode(e.target.value)} />
+
+      {/* Barra de acciones */}
+      <div className="flex gap-2" style={{marginBottom:'1rem',flexWrap:'wrap',alignItems:'center'}}>
         <button className="btn btn-primary" onClick={fetch_} disabled={loading || !selectedPat}>
-          {loading ? <div className="spinner"/> : 'Consultar'}
+          {loading ? <div className="spinner"/> : '↻ Actualizar'}
         </button>
-        <button className="btn btn-ghost btn-sm" onClick={() => setShowCreate(s => !s)} disabled={!selectedPat}>
-          {showCreate ? 'Cancelar' : '+ Registrar'}
-        </button>
+        {selectedPat && result && !editMode && (
+          <button className="btn btn-ghost btn-sm" onClick={openEditForm}>
+            {hasObs ? '✏️ Editar observaciones' : '+ Registrar observaciones'}
+          </button>
+        )}
+        {editMode && (
+          <button className="btn btn-ghost btn-sm" onClick={() => setEditMode(false)}>
+            Cancelar
+          </button>
+        )}
       </div>
 
-      {showCreate && (
+      {/* Formulario unificado editar / registrar */}
+      {editMode && (
         <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid var(--border)',borderRadius:8,padding:'1rem',marginBottom:'1rem'}}>
-          <div style={{fontSize:'0.78rem',fontWeight:600,marginBottom:'0.75rem'}}>Nueva Observación FHIR R4</div>
-          <div className="su-form-grid">
-            <div className="form-group">
-              <label className="label">Código LOINC</label>
-              <input className="input" placeholder="2339-0 (Glucosa)" value={newObs.loinc}
-                onChange={e => setNewObs(o => ({...o, loinc: e.target.value}))} />
-            </div>
-            <div className="form-group">
-              <label className="label">Valor</label>
-              <input className="input" type="number" placeholder="126" value={newObs.value}
-                onChange={e => setNewObs(o => ({...o, value: e.target.value}))} />
-            </div>
-            <div className="form-group">
-              <label className="label">Unidad</label>
-              <input className="input" placeholder="mg/dL" value={newObs.unit}
-                onChange={e => setNewObs(o => ({...o, unit: e.target.value}))} />
-            </div>
+          <div style={{fontSize:'0.78rem',fontWeight:600,marginBottom:'0.25rem',color:'var(--text-1)'}}>
+            {hasObs ? 'Editar observaciones clínicas' : 'Registrar observaciones clínicas'}
           </div>
-          <button className="btn btn-primary btn-sm" onClick={createObs} disabled={saving || !newObs.loinc}>
-            {saving ? <><div className="spinner"/> Guardando…</> : 'Registrar observación'}
+          <div style={{fontSize:'0.73rem',color:'var(--text-3)',marginBottom:'0.85rem'}}>
+            {hasObs
+              ? 'Modifica los valores y guarda. Los campos vacíos no se actualizan.'
+              : 'Completa los valores y guarda. Los campos vacíos se omiten.'}
+          </div>
+          <div className="su-form-grid">
+            {LOINC_MAP.map(l => {
+              const entry = editValues[l.code] || { id: null, value: '', unit: l.unit }
+              const isExisting = !!entry.id
+              return (
+                <div className="form-group" key={l.code}>
+                  <label className="label" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span>{l.label} <span style={{color:'var(--text-4)',fontWeight:400}}>({l.unit})</span></span>
+                    {isExisting && <span style={{fontSize:'0.62rem',color:'var(--cyan)',background:'rgba(6,182,212,0.1)',padding:'1px 6px',borderRadius:99}}>existente</span>}
+                  </label>
+                  <input
+                    className="input"
+                    type="number"
+                    placeholder={isExisting ? String(entry.value) : l.placeholder}
+                    value={entry.value}
+                    onChange={e => setEditValues(v => ({...v, [l.code]: {...(v[l.code]||{}), value: e.target.value}}))}
+                  />
+                </div>
+              )
+            })}
+          </div>
+          <button className="btn btn-primary btn-sm" style={{marginTop:'0.75rem'}} onClick={saveEdit} disabled={saving}>
+            {saving ? <><div className="spinner"/> Guardando…</> : (hasObs ? '💾 Guardar cambios' : '✅ Registrar')}
           </button>
         </div>
       )}
 
-      {result && (
-        obs.length > 0 ? (
+      {/* Lista de observaciones */}
+      {result && !editMode && (
+        hasObs ? (
           <div>
-            <div style={{fontSize:'0.75rem',color:'var(--text-3)',marginBottom:'0.75rem'}}>{result.total ?? obs.length} observación(es)</div>
+            <div style={{fontSize:'0.75rem',color:'var(--text-3)',marginBottom:'0.75rem'}}>
+              {result.total ?? obs.length} observación(es)
+            </div>
             <div style={{display:'flex',flexDirection:'column',gap:'0.5rem'}}>
               {obs.map((o, i) => {
                 const code = o?.code?.coding?.[0]
@@ -809,7 +863,10 @@ function ObservationsTab({ api, selectedPat }) {
             </div>
           </div>
         ) : (
-          <div style={{color:'var(--text-3)',fontSize:'0.85rem'}}>No hay observaciones registradas.</div>
+          <div style={{color:'var(--text-3)',fontSize:'0.85rem',padding:'1.5rem',textAlign:'center',
+            background:'rgba(255,255,255,0.02)',borderRadius:8,border:'1px dashed var(--border)'}}>
+            No hay observaciones registradas para este paciente.
+          </div>
         )
       )}
     </div>

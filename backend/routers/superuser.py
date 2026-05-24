@@ -410,6 +410,14 @@ async def create_patient_external(
         full_name, birth_date, enc_doc, doc_type,
     )
 
+    # Auto-asignar al médico que creó el paciente para que pueda agregar observaciones
+    await db.execute(
+        """INSERT INTO practitioner_assignments (practitioner_id, patient_id, assigned_by)
+           VALUES ($1::uuid, $2::uuid, NULL)
+           ON CONFLICT (practitioner_id, patient_id) DO NOTHING""",
+        str(practitioner["id"]), str(row["id"]),
+    )
+
     ip = request.client.host if request.client else None
     import json as _json
     await db.execute(
@@ -515,6 +523,45 @@ async def create_observation_external(
         "id": str(row["id"]),
         "status": "final",
         "effectiveDateTime": row["created_at"].isoformat(),
+    }
+
+
+@router.patch("/superuser/patients/{patient_id}/observations/{obs_id}", status_code=200)
+async def update_observation_external(
+    patient_id: str,
+    obs_id: str,
+    request: Request,
+    practitioner: dict = Depends(require_superuser),
+    db: asyncpg.Connection = Depends(get_db),
+):
+    """Actualizar valor y unidad de una observación existente."""
+    await _require_patient_assigned(db, str(practitioner["id"]), patient_id)
+    body = await request.json()
+    value_q = body.get("valueQuantity", {})
+    value = value_q.get("value")
+    unit = value_q.get("unit", "")
+
+    if value is None:
+        raise HTTPException(status_code=400, detail="valueQuantity.value es requerido")
+    if not isinstance(value, (int, float)) or value < 0:
+        raise HTTPException(status_code=400, detail="valueQuantity.value debe ser un número no negativo")
+    if len(unit) > 20:
+        raise HTTPException(status_code=400, detail="unit no puede superar 20 caracteres")
+
+    row = await db.fetchrow(
+        """UPDATE observations SET value = $1, unit = $2
+           WHERE id = $3::uuid AND patient_id = $4::uuid AND deleted_at IS NULL
+           RETURNING id, loinc_code, value, unit""",
+        value, unit, obs_id, patient_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Observación no encontrada")
+    return {
+        "resourceType": "Observation",
+        "id": str(row["id"]),
+        "status": "final",
+        "loinc_code": row["loinc_code"],
+        "valueQuantity": {"value": float(row["value"]), "unit": row["unit"]},
     }
 
 

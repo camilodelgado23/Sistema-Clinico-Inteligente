@@ -38,7 +38,7 @@ async def create_patient_user(
     suffix = 1
     while True:
         exists = await db.fetchval(
-            "SELECT id FROM users WHERE username = $1 AND deleted_at IS NULL",
+            "SELECT id FROM users WHERE username = $1",
             username,
         )
         if not exists:
