@@ -463,7 +463,7 @@ function TabImagenes({ patientId, role }) {
 }
 
 // ── Tab Análisis IA ───────────────────────────────────────────────────────────
-function TabAnalisis({ patientId, onCritical }) {
+function TabAnalisis({ patientId, onCritical, onComplete }) {
   const [modelType, setModelType] = useState('ML')
   const [taskId, setTaskId]       = useState(null)
   const [status, setStatus]       = useState(null)
@@ -500,6 +500,7 @@ function TabAnalisis({ patientId, onCritical }) {
               stopPolling()
               setRunning(false)
               setResult(d.result)
+              onComplete?.()
               if (d.result.is_critical) onCritical(d.result)
             }
             // Si DONE pero result aún null → condición de carrera, seguir polling
@@ -1329,7 +1330,9 @@ export default function PatientDetail() {
       {activeTab==='Datos'        &&<TabDatos patient={patient} role={user?.role}/>}
       {activeTab==='Observaciones'&&<TabObservaciones patientId={id} role={user?.role}/>}
       {activeTab==='Imágenes'     &&<TabImagenes patientId={id} role={user?.role}/>}
-      {activeTab==='Análisis IA'  &&<TabAnalisis patientId={id} onCritical={rep=>setCriticalReport(rep)}/>}
+      {activeTab==='Análisis IA'  &&<TabAnalisis patientId={id} onCritical={rep=>setCriticalReport(rep)} onComplete={()=>{
+        setPending(prev=>{const n=prev+1;setPendingReports(n);return n})
+      }}/>}
       {activeTab==='Reportes'     &&<TabReportes patientId={id} role={user?.role} onRefreshPending={loadPatient}/>}
     </div>
   )
