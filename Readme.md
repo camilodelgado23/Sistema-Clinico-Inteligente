@@ -36,7 +36,7 @@ make backup   # Backup de PostgreSQL
 | Servicio | URL | Para qué sirve |
 |---|---|---|
 | Frontend | https://clinai.me | Interfaz clínica completa |
-| Backend API | https://clinai.me/api/v1/docs | Swagger — probar endpoints |
+| Backend API | https://clinai.me/docs | Swagger — probar endpoints |
 | MinIO Console | `ssh -L 9001:localhost:9001 root@147.182.131.232 -N` | Consola MinIO (tunel SSH) |
 
 ---
@@ -85,6 +85,8 @@ Sistema-Clinico-Inteligente/
 │
 ├── nginx/                      # Proxy inverso + TLS
 │   ├── nginx.conf              # Rutas, rate-limiting por CF-Connecting-IP, CORS
+│   │                           # Expone /docs, /redoc, /openapi.json → backend
+│   ├── Nginx.conf              # Versión legacy (sin detección Cloudflare, no activa)
 │   ├── Dockerfile
 │   └── certs/
 │       ├── cert.pem            # Certificado Cloudflare Origin (válido hasta 2041)
