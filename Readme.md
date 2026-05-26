@@ -250,4 +250,4 @@ SuperUser → backend /api/v1/superuser/* → rag-agent (proxy con X-Granted-Pat
 
 > Haz clic en la imagen para ver el video de funcionamiento completo.
 
-[![Demo del Sistema Clínico Digital Interoperable](https://drive.google.com/thumbnail?id=1X6uRLiFU0J6djXTPMCcJfaDo_pIcHVQ1&sz=w1280)](https://drive.google.com/file/d/1X6uRLiFU0J6djXTPMCcJfaDo_pIcHVQ1/view?usp=sharing)
+[![Demo del Sistema Clínico Digital Interoperable](https://drive.google.com/thumbnail?id=1X6uRLiFU0J6djXTPMCcJfaDo_pIcHVQ1&sz=w1280)](https://drive.google.com/file/d/1-eMu3x-xqgFTd2Z3ecZIpZ2CzSZCRatN/view?usp=sharing)

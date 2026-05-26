@@ -1,0 +1,1486 @@
+{
+  "info": {
+    "_postman_id": "7a99ec04-e208-4245-8559-a6368c17fc40",
+    "name": "ClinAI — API Completa",
+    "description": "Sistema Clínico Digital Interoperable. Autenticación: POST /auth/login con X-Access-Key + X-Permission-Key → guarda {{token}} en variable. Todos los demás endpoints usan Bearer {{token}}. Variables: base_url, orch_url, ml_url, dl_url, rag_url.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "26953276"
+  },
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Login usuario",
+          "request": {
+            "auth": {
+              "type": "apikey"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Access-Key",
+                "value": "{{access_key}}"
+              },
+              {
+                "key": "X-Permission-Key",
+                "value": "{{permission_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinai.me\",\n  \"password\": \"SecurePass123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registro usuario (ADMIN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"medico@clinai.me\",\n  \"password\": \"Pass1234!\",\n  \"role\": \"MEDICO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Perfil usuario autenticado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Refrescar token JWT",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Autenticación JWT — doble API-Key (X-Access-Key + X-Permission-Key) → JWT Bearer. El pre-request script guarda el token automáticamente."
+    },
+    {
+      "name": "✅ Consent (Ley 1581)",
+      "item": [
+        {
+          "name": "Registrar consentimiento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"paciente@example.com\",\n  \"accepted\": true,\n  \"policy_version\": \"v1.0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/consent",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "consent"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Habeas Data — consentimiento obligatorio antes de acceder al sistema."
+    },
+    {
+      "name": "👤 FHIR Patient",
+      "item": [
+        {
+          "name": "Listar pacientes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient?_count=20&_page=1&identifier=CC|1234567890&name=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient"
+              ],
+              "query": [
+                {
+                  "key": "_count",
+                  "value": "20"
+                },
+                {
+                  "key": "_page",
+                  "value": "1"
+                },
+                {
+                  "key": "identifier",
+                  "value": "CC|1234567890"
+                },
+                {
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear paciente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"María Gómez\",\n  \"birthDate\": \"1985-03-15\",\n  \"gender\": \"female\",\n  \"identification_number\": \"1234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener paciente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/{{patient_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "{{patient_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar paciente",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"María Gómez Torres\",\n  \"birthDate\": \"1985-03-15\",\n  \"gender\": \"female\",\n  \"identification_number\": \"1234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/{{patient_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "{{patient_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Soft-delete paciente",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/{{patient_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "{{patient_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Historial versiones (_history)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Patient/{{patient_id}}/_history",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Patient",
+                "{{patient_id}}",
+                "_history"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Recurso Patient FHIR R4. Soft-delete obligatorio (Res. 1995/1999). Búsqueda por identifier: CC|número."
+    },
+    {
+      "name": "🔬 FHIR Observation",
+      "item": [
+        {
+          "name": "Listar observaciones del paciente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Observation?patient={{patient_id}}&code=2339-0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Observation"
+              ],
+              "query": [
+                {
+                  "key": "patient",
+                  "value": "{{patient_id}}"
+                },
+                {
+                  "key": "code",
+                  "value": "2339-0"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear observación (glucosa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{patient_id}}\",\n  \"loinc_code\": \"2339-0\",\n  \"value\": 148.5,\n  \"unit\": \"mg/dL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/fhir/Observation",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Observation"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener observación",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Observation/{{observation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Observation",
+                "{{observation_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar observación",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{patient_id}}\",\n  \"loinc_code\": \"2339-0\",\n  \"value\": 135.0,\n  \"unit\": \"mg/dL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/fhir/Observation/{{observation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Observation",
+                "{{observation_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar observación (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Observation/{{observation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Observation",
+                "{{observation_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Observaciones clínicas LOINC. Requiere patient_id. Códigos: 2339-0 Glucosa, 55284-4 PA, 39156-5 BMI, etc."
+    },
+    {
+      "name": "🖼️ FHIR Media",
+      "item": [
+        {
+          "name": "Subir imagen retiniana",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": []
+            },
+            "url": {
+              "raw": "{{base_url}}/fhir/Media",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Media"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener imagen (presigned URL)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/fhir/Media/{{media_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "fhir",
+                "Media",
+                "{{media_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Imágenes médicas retinianas. Sube a MinIO, clave cifrada AES-256. Retorna presigned URL firmada con boto3."
+    },
+    {
+      "name": "⚡ Inference",
+      "item": [
+        {
+          "name": "Ejecutar inferencia ML (XGBoost)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{patient_id}}\",\n  \"model_type\": \"ml\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/infer",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "infer"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ejecutar inferencia DL (EfficientNet-B0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"{{patient_id}}\",\n  \"model_type\": \"dl\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/infer",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "infer"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Orquestación asíncrona. Rate limit 10 req/min. Retorna task_id → escuchar WebSocket ws://localhost:8003/ws/{task_id}."
+    },
+    {
+      "name": "📊 Risk Reports",
+      "item": [
+        {
+          "name": "Reportes del paciente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/risk-reports/patient/{{patient_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "risk-reports",
+                "patient",
+                "{{patient_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener reporte",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/risk-reports/{{report_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "risk-reports",
+                "{{report_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Firmar reporte (ACCEPTED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctor_action\": \"ACCEPTED\",\n  \"doctor_notes\": \"Revisado y aceptado. El paciente presenta riesgo moderado. Se recomienda seguimiento trimestral.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/risk-reports/{{report_id}}/sign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "risk-reports",
+                "{{report_id}}",
+                "sign"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Firmar reporte (REJECTED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctor_action\": \"REJECTED\",\n  \"doctor_notes\": \"Reporte rechazado. Los datos de observaciones están incompletos para tomar una decisión.\",\n  \"rejection_reason\": \"Datos insuficientes\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/risk-reports/{{report_id}}/sign",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "risk-reports",
+                "{{report_id}}",
+                "sign"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Reportes de riesgo. prediction_enc y shap_enc se descifran con AES-256. Firma médica obligatoria (Res. 1995/1999)."
+    },
+    {
+      "name": "🛠️ Admin",
+      "item": [
+        {
+          "name": "Listar usuarios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users?role=MEDICO&search=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": "MEDICO"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nuevo@clinai.me\",\n  \"password\": \"Pass1234!\",\n  \"role\": \"MEDICO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar usuario",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"MEDICO\",\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/users/{{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{user_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Desactivar usuario (soft-delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/users/{{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "users",
+                "{{user_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ver asignaciones médico-paciente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/patient-assignments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "patient-assignments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Asignar paciente a médico",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctor_id\": \"{{user_id}}\",\n  \"patient_id\": \"{{patient_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/patient-assignments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "patient-assignments"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar solicitudes ARCO",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/arco-requests",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "arco-requests"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar solicitud ARCO",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ACCESO\",\n  \"description\": \"Solicito acceso a todos mis datos personales almacenados en el sistema.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/arco-requests",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "arco-requests"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Resolver solicitud ARCO",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RESOLVED\",\n  \"resolution_notes\": \"Se entregó copia de todos los datos al titular.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/arco-requests/{{arco_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "arco-requests",
+                "{{arco_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Log de auditoría (INSERT-ONLY)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admin/audit-log?from=2025-01-01&to=2025-12-31&user_id=&action=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "admin",
+                "audit-log"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2025-01-01"
+                },
+                {
+                  "key": "to",
+                  "value": "2025-12-31"
+                },
+                {
+                  "key": "user_id",
+                  "value": ""
+                },
+                {
+                  "key": "action",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Panel administrador — requiere rol ADMIN. Usuarios, asignaciones médico-paciente, ARCO (Ley 1581/2012), auditoría."
+    },
+    {
+      "name": "🏥 SuperUser (Médico externo)",
+      "item": [
+        {
+          "name": "Login médico externo",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Access-Key",
+                "value": "{{access_key}}"
+              },
+              {
+                "key": "X-Permission-Key",
+                "value": "{{permission_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"license_number\": \"RM-12345\",\n  \"password\": \"MedicoPass123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/superuser/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "superuser",
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar pacientes asignados",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{su_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/superuser/patients",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "superuser",
+                "patients"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener datos del paciente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{su_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/superuser/patients/{{patient_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "superuser",
+                "patients",
+                "{{patient_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Crear paciente externo (FHIR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{su_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Carlos Pérez\",\n  \"birthDate\": \"1972-08-20\",\n  \"gender\": \"male\",\n  \"identification_number\": \"9876543210\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/superuser/patients",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "superuser",
+                "patients"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar paciente por cédula (FHIR interop)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{su_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/superuser/fhir/Patient/CC|1234567890",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "superuser",
+                "fhir",
+                "Patient",
+                "CC|1234567890"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ver reportes de riesgo del paciente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{su_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/superuser/risk-reports/{{patient_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "superuser",
+                "risk-reports",
+                "{{patient_id}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Portal interoperabilidad. Login con SUPERUSER_JWT_SECRET independiente. JWT guardado en {{su_token}}."
+    },
+    {
+      "name": "🤖 RAG Agent",
+      "item": [
+        {
+          "name": "Consulta híbrida (FAISS+BM25)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Cuál es el tratamiento recomendado para retinopatía diabética moderada?\",\n  \"mode\": \"hybrid\",\n  \"patient_id\": \"{{patient_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rag_url}}/agent/chat",
+              "host": [
+                "{{rag_url}}"
+              ],
+              "path": [
+                "agent",
+                "chat"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Consulta agentic (ReAct tool-calling)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Analiza el riesgo de este paciente y crea un reporte FHIR RiskAssessment.\",\n  \"mode\": \"agentic\",\n  \"patient_id\": \"{{patient_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rag_url}}/agent/chat",
+              "host": [
+                "{{rag_url}}"
+              ],
+              "path": [
+                "agent",
+                "chat"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Limpiar sesión RAG (Redis)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{rag_url}}/agent/chat/session",
+              "host": [
+                "{{rag_url}}"
+              ],
+              "path": [
+                "agent",
+                "chat",
+                "session"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health check RAG Agent",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{rag_url}}/agent/health",
+              "host": [
+                "{{rag_url}}"
+              ],
+              "path": [
+                "agent",
+                "health"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Rate limit 60/min. Anti-injection activo (23 patrones). Máx 2000 chars. Modos: naive | hybrid | advanced | agentic."
+    },
+    {
+      "name": "🧪 ML Service (:8001)",
+      "item": [
+        {
+          "name": "Predicción directa (XGBoost ONNX)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"features\": {\n    \"Pregnancies\": 2,\n    \"Glucose\": 148,\n    \"BloodPressure\": 72,\n    \"SkinThickness\": 35,\n    \"Insulin\": 0,\n    \"BMI\": 33.6,\n    \"DiabetesPedigreeFunction\": 0.627,\n    \"Age\": 50\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{ml_url}}/predict",
+              "host": [
+                "{{ml_url}}"
+              ],
+              "path": [
+                "predict"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health check ML Service",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{ml_url}}/health",
+              "host": [
+                "{{ml_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "XGBoost ONNX. Llamado internamente por el Orchestrator. Latencia ≤400ms CPU."
+    },
+    {
+      "name": "🔬 DL Service (:8002)",
+      "item": [
+        {
+          "name": "Predicción retinografía (EfficientNet-B0)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image_id\": \"{{media_id}}\",\n  \"patient_id\": \"{{patient_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{dl_url}}/predict",
+              "host": [
+                "{{dl_url}}"
+              ],
+              "path": [
+                "predict"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health check DL Service",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{dl_url}}/health",
+              "host": [
+                "{{dl_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "EfficientNet-B0 ONNX. Grad-CAM o Occlusion Sensitivity Map. Presigned URL boto3."
+    },
+    {
+      "name": "⚙️ Orchestrator (:8003)",
+      "item": [
+        {
+          "name": "Estado de tarea de inferencia",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orch_url}}/status/{{task_id}}",
+              "host": [
+                "{{orch_url}}"
+              ],
+              "path": [
+                "status",
+                "{{task_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Health check Orchestrator",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orch_url}}/health",
+              "host": [
+                "{{orch_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Cola asíncrona Semaphore(4). WebSocket: ws://localhost:8003/ws/{task_id}."
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "orch_url",
+      "value": "http://localhost:8003"
+    },
+    {
+      "key": "ml_url",
+      "value": "http://localhost:8001"
+    },
+    {
+      "key": "dl_url",
+      "value": "http://localhost:8002"
+    },
+    {
+      "key": "rag_url",
+      "value": "http://localhost:8004"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "su_token",
+      "value": ""
+    },
+    {
+      "key": "patient_id",
+      "value": ""
+    },
+    {
+      "key": "report_id",
+      "value": ""
+    },
+    {
+      "key": "task_id",
+      "value": ""
+    }
+  ]
+}
